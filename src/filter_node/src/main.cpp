@@ -13,6 +13,9 @@ ros::Publisher pub_kf_filter;
 ros::Publisher pub_ekf_filter;
 ros::Publisher pub_pf_filter;
 
+ros::Subscriber scan_sub;
+
+
 int main(int argc, char** argv) {
   ros::init(argc, argv, "filter_node");
   ros::NodeHandle nh;
@@ -28,6 +31,8 @@ int main(int argc, char** argv) {
   P_ekf = Eigen::MatrixXd::Identity(3,3) * 0.1;
   Q_ekf = Eigen::MatrixXd::Identity(3,3) * 0.01;
   R_ekf = Eigen::MatrixXd::Identity(3,3) * 0.05;
+
+  loadLandmarks("/home/focal/turtle_ws/scripts/landmarks.txt");
 
   // Initialisierung KF
   x_kf = Eigen::VectorXd::Zero(3);
@@ -56,6 +61,9 @@ int main(int argc, char** argv) {
   sync.registerCallback(kfCallback);
   sync.registerCallback(ekfCallback);
   sync.registerCallback(pfCallback);
+
+  scan_sub = nh.subscribe("/scan", 10, scanCallback);
+
 
   ros::spin();
   return 0;

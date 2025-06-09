@@ -1,4 +1,4 @@
-# prolab
+# PRO_Lab
 
 ## 0. Requirements
 Make sure that the package **turtlebot3_description** is available in your global ROS-Path (*/opt/ros/noetic/share*):
@@ -60,108 +60,35 @@ Einfach den Befehl killen und noch mal starten.
 ## Falls es mal hängt: Kill All!
 ```bash
 killall -9 roscore rosmaster rosout gzserver gzclient
+catkin clean -y
 ```
 
-## 5. Ausgaben der Filter topics
+## 6. First Filter implemented: EKF
 ```bash
-focal@focal:~/turtle_ws$ rostopic echo /kf_filter/odom
 header: 
-  seq: 2196
+  seq: 12806
   stamp: 
-    secs: 1974
-    nsecs: 520000000
-  frame_id: "odom"
-child_frame_id: "base_footprint"
+    secs: 1712
+    nsecs: 540000000
+  frame_id: "map"
 pose: 
   pose: 
     position: 
-      x: 0.31131548450910285
-      y: 0.012277796424420282
-      z: 0.049350379684697826
-    orientation: 
-      x: -0.001248069024348646
-      y: 0.001907079160343123
-      z: 0.9943613742529659
-      w: 0.10602010548259229
-  covariance: [1e-05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
-twist: 
-  twist: 
-    linear: 
-      x: -0.001987716961708169
-      y: 0.0016246141608199747
+      x: 0.335299812381564
+      y: -0.008349527280484794
       z: 0.0
-    angular: 
+    orientation: 
       x: 0.0
       y: 0.0
-      z: 0.030168834824700612
-  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      z: -0.9943416899982722
+      w: 0.10622901454583862
+  covariance: [0.013686038362359095, -0.0024724910473428773, -0.00048270061444676644, 0.0, 0.0, 0.0, -0.0024724910473428725, 0.010599706078336685, 0.00014468562373250304, 0.0, 0.0, 0.0, -0.00048270061444676704, 0.00014468562373250271, 0.008091739755542917, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 ---
 ```
+
+7. Comparison between `/ekf_node/ekf_pose` and `/gazebo/model_states`
 ```bash
-focal@focal:~/turtle_ws$ rostopic echo /ekf_filter/odom
-header: 
-  seq: 5435
-  stamp: 
-    secs: 2082
-    nsecs: 480000000
-  frame_id: "odom"
-child_frame_id: "base_footprint"
-pose: 
-  pose: 
-    position: 
-      x: 0.37245540280220174
-      y: 0.014301139994589615
-      z: 0.04958603089494515
-    orientation: 
-      x: 0.0018228338030330186
-      y: 0.002904276685731321
-      z: -0.8320165735834772
-      w: 0.5547401767821303
-  covariance: [1e-05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
-twist: 
-  twist: 
-    linear: 
-      x: 0.0003157882533193501
-      y: 0.003306798832405872
-      z: 0.0
-    angular: 
-      x: 0.0
-      y: 0.0
-      z: 0.07510671539852391
-  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
----
-```
-```bash
-focal@focal:~/turtle_ws$ rostopic echo /pf_filter/odom
-header: 
-  seq: 6851
-  stamp: 
-    secs: 2129
-    nsecs: 680000000
-  frame_id: "odom"
-child_frame_id: "base_footprint"
-pose: 
-  pose: 
-    position: 
-      x: nan
-      y: nan
-      z: 0.04935611077519547
-    orientation: 
-      x: 0.0006394853024721342
-      y: 0.00227606088465104
-      z: 0.6078538939022572
-      w: 0.7940453729310819
-  covariance: [1e-05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1000000000000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.001]
-twist: 
-  twist: 
-    linear: 
-      x: -0.0019784797731067206
-      y: 0.004850601132048276
-      z: 0.0
-    angular: 
-      x: 0.0
-      y: 0.0
-      z: 0.07855743069123798
-  covariance: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
----
+cd ~/turtle_ws/src/ekf_node/scripts/ekf_analysis/
+rosbag record /ekf_node/ekf_pose /gazebo/model_states
+./main.py 
 ```
