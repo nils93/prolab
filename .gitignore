@@ -53,4 +53,5 @@ CATKIN_IGNORE
 
 # Eigene Erweiterungen
 src/ekf_node_scripts/ekf_analyse/export/
+src/filter_node
 *.bag
