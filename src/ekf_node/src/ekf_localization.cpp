@@ -1,8 +1,4 @@
 #include "ekf_node/ekf_localization.h"
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <XmlRpcValue.h>
-#include <cmath>
 
 EKFLocalization::EKFLocalization(ros::NodeHandle& nh) {
   // Landmarken laden

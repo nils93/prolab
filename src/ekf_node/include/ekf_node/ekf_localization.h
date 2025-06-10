@@ -5,10 +5,14 @@
 #include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <XmlRpcValue.h>
 
 // Eigen für lineare Algebra
 #include <Eigen/Dense>
 #include <vector>
+#include <cmath>
 
 // Struktur zur Beschreibung einer Landmarke (ID + Position)
 struct Landmark {
