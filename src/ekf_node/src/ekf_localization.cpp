@@ -18,12 +18,12 @@ EKFLocalization::EKFLocalization(ros::NodeHandle& nh) {
 
   // Initialisierung
   x_.setZero();
-  P_.setIdentity();  Q_ = Eigen::Matrix3d::Identity() * 1e-3;
+  P_.setIdentity();  
+  Q_ = Eigen::Matrix3d::Identity() * 1e-3;
   R_ = Eigen::Matrix2d::Identity() * 1e-2;
   last_time_ = ros::Time::now();
 
   // Subs & Pub
-  // odom_sub_ = nh.subscribe("odom", 10, &EKFLocalization::odomCallback, this);
   odom_sub_ = nh.subscribe("/odom", 10, &EKFLocalization::odomCallback, this); 
   lm_sub_   = nh.subscribe("landmark_obs", 10, &EKFLocalization::lmCallback, this);
   pose_pub_ = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("ekf_pose", 10);
@@ -90,6 +90,7 @@ void EKFLocalization::update(int id, const Eigen::Vector2d& z) {
 }
 
 void EKFLocalization::publishPose() {
+  // ROS-Nachricht erstellen
   geometry_msgs::PoseWithCovarianceStamped out;
   out.header.stamp    = ros::Time::now();
   out.header.frame_id = "map";
