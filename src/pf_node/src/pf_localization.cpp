@@ -60,6 +60,7 @@ void PFLocalization::predict(const nav_msgs::Odometry::ConstPtr& odom) {
     }
 }
 
+
 void PFLocalization::update(int id, const Eigen::Vector2d& z) {
     // Landmarke finden
     auto it = std::find_if(LM_.begin(), LM_.end(), [&](const Landmark& L){ return L.id == id; });
@@ -86,6 +87,8 @@ void PFLocalization::update(int id, const Eigen::Vector2d& z) {
     resample();
 }
 
+
+
 void PFLocalization::resample() {
     std::vector<Particle> new_particles;
     std::vector<double> weights;
@@ -99,6 +102,7 @@ void PFLocalization::resample() {
     }
     particles_ = std::move(new_particles);
 }
+
 
 void PFLocalization::publishPose() {
     // ROS-Nachricht erstellen

@@ -92,3 +92,5 @@ cd ~/turtle_ws/src/ekf_node/scripts/ekf_analysis/
 rosbag record /ekf_node/ekf_pose /gazebo/model_states
 ./main.py 
 ```
+
+8. Second Filter implemented: Monte Carlo Particle Filter
