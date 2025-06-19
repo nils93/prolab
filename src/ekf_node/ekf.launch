@@ -1,0 +1,30 @@
+<launch>
+
+  <!-- Fester statischer TF zwischen map und odom -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom"
+        args="0 0 0 0 0 0 map odom"/>
+
+  <!-- Lädt eine statische Karte (für visuelle Referenz oder Debugging) -->
+  <node pkg="map_server" type="map_server" name="map_server"
+        args="$(find ekf_node)/maps/my_map.yaml" output="screen"/>
+
+  <!-- EKF-Knoten zur Lokalisierung -->
+  <node pkg="ekf_node" type="ekf_node" name="ekf_node" output="screen">
+    <!-- Nutzt sim_time aus Gazebo oder aufgezeichneter bag -->
+    <param name="use_sim_time" value="true"/>
+    
+    <!-- Lädt Landmarken aus YAML-Datei ins Parameter-Server -->
+    <rosparam file="$(find ekf_node)/config/landmark_map.yaml" command="load"/>
+    
+    <!-- Remappt das Odom-Topic (z. B. falls dieses global /odom heißt) -->
+    <remap from="odom" to="/odom"/>
+  </node>
+
+  <!-- Simulierter Landmarken-Publisher -->
+  <node pkg="ekf_node" type="sim_landmark_pub.py" name="sim_landmark_pub"
+        output="screen">
+    <!-- Lädt dieselben Landmarken für den Publisher -->
+    <rosparam file="$(find ekf_node)/config/landmark_map.yaml" command="load"/>
+  </node>
+
+</launch>

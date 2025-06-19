@@ -1,0 +1,31 @@
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <param name="use_sim_time" value="$(arg use_sim_time)"/>
+
+  <!-- TF map→odom -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom"
+        args="0 0 0 0 0 0 map odom"/>
+
+  <!-- Map-Server -->
+  <node pkg="map_server" type="map_server" name="map_server" output="screen"
+        args="$(find example_package)/maps/my_map.yaml"/>
+
+  <!-- AMCL -->
+  <node pkg="amcl" type="amcl" name="amcl" output="screen">
+    <param name="odom_frame_id" value="odom"/>
+    <param name="base_frame_id"  value="base_link"/>
+    <param name="scan_topic"     value="scan"/>
+  </node>
+
+  <!-- Costmap-Parameter laden -->
+  <rosparam file="$(find example_package)/config/global_costmap.yaml"
+            command="load" ns="move_base"/>
+  <rosparam file="$(find example_package)/config/local_costmap.yaml"
+            command="load" ns="move_base"/>
+
+  <!-- move_base mit korrekten Planner-Parametern -->
+  <node pkg="move_base" type="move_base" name="move_base" output="screen">
+    <param name="base_global_planner" value="navfn/NavfnROS"/>
+    <param name="base_local_planner"  value="base_local_planner/TrajectoryPlannerROS"/>
+  </node>
+</launch>
