@@ -12,19 +12,9 @@
   <node pkg="ekf_node" type="ekf_node" name="ekf_node" output="screen">
     <!-- Nutzt sim_time aus Gazebo oder aufgezeichneter bag -->
     <param name="use_sim_time" value="true"/>
-    
-    <!-- Lädt Landmarken aus YAML-Datei ins Parameter-Server -->
-    <rosparam file="$(find ekf_node)/config/landmark_map.yaml" command="load"/>
-    
+       
     <!-- Remappt das Odom-Topic (z. B. falls dieses global /odom heißt) -->
     <remap from="odom" to="/odom"/>
-  </node>
-
-  <!-- Simulierter Landmarken-Publisher -->
-  <node pkg="ekf_node" type="sim_landmark_pub.py" name="sim_landmark_pub"
-        output="screen">
-    <!-- Lädt dieselben Landmarken für den Publisher -->
-    <rosparam file="$(find ekf_node)/config/landmark_map.yaml" command="load"/>
   </node>
 
 </launch>

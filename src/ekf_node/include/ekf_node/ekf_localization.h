@@ -3,52 +3,64 @@
 
 // ROS
 #include <ros/ros.h>
+#include <ros/topic.h>
 #include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <sensor_msgs/Imu.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <XmlRpcValue.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/utils.h>                            // für tf2::getYaw
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <boost/bind/bind.hpp> 
+#include <cmath>
 
 // Eigen für lineare Algebra
 #include <Eigen/Dense>
-#include <vector>
-#include <cmath>
 
-// Struktur zur Beschreibung einer Landmarke (ID + Position)
-struct Landmark {
-  int id;   // eindeutige Kennung
-  double x, y; // Position in der Karte
-};
-
-// Klasse zur Implementierung eines Extended Kalman Filters (EKF)
 class EKFLocalization {
 public:
-  // Konstruktor mit ROS-NodeHandle
   EKFLocalization(ros::NodeHandle& nh);
 
 private:
+  // ekf-Zustand und Kovarianzmatrizen
+  Eigen::Vector4d x_;           // [x, y, θ, v]
+  Eigen::Matrix4d P_;           // State-Cov
+  Eigen::Matrix4d F_;           // Systemmatrix
+  Eigen::Matrix4d Q_;           // Prozessrauschen
+  Eigen::Matrix<double,2,4> H_; // Messmatrix [v_meas; θ_meas]
+  Eigen::Matrix2d R_;           // Messrauschen
+
   // ROS Subscriber und Publisher
-  ros::Subscriber odom_sub_;  // für Odometrie-Eingang
-  ros::Subscriber lm_sub_;    // für Landmarkenbeobachtungen
-  ros::Publisher  pose_pub_;  // veröffentlichte geschätzte Pose
+  ros::Publisher pose_pub_; // veröffentlichte geschätzte Pose
+  ros::Time last_time_;
 
-  // EKF-Zustand und Kovarianzmatrizen
-  Eigen::Vector3d x_;      // Zustand: [x, y, theta]
-  Eigen::Matrix3d P_;      // Kovarianzmatrix des Zustands
-  Eigen::Matrix3d Q_;      // Prozessrauschen
-  Eigen::Matrix2d R_;      // Messrauschen
 
-  std::vector<Landmark> LM_; // Liste bekannter Landmarken
-  ros::Time last_time_;      // letzter Zeitstempel für die Zeitschrittdifferenz
+  // Synchronisierter Callback für Odom + IMU
+  void ekfCallback(
+    const nav_msgs::Odometry::ConstPtr& odom,
+    const sensor_msgs::Imu::ConstPtr& imu);
 
-  // Callback-Funktionen für ROS-Nachrichten
-  void odomCallback(const nav_msgs::Odometry::ConstPtr& msg);                         // Vorhersageschritt
-  void lmCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg);    // Korrekturschritt
+  // ekf-Schritte
+  void predict(const nav_msgs::Odometry::ConstPtr& odom); // Bewegungsvorhersage
+  void update(const Eigen::Vector2d& z);           // Korrektur mit Messvektor
+  void publishPose();                          // Ausgabe der geschätzten Pose als ROS-Topic
 
-  // EKF-Schritte
-  void predict(const nav_msgs::Odometry::ConstPtr& odom);               // Bewegungsvorhersage
-  void update(int id, const Eigen::Vector2d& z);                        // Korrektur mit Landmarkenbeobachtung
-  void publishPose();                                                   // Ausgabe der geschätzten Pose als ROS-Topic
+  // Message-Filters für Odom + IMU
+  message_filters::Subscriber<nav_msgs::Odometry> odom_sub_;
+  message_filters::Subscriber<sensor_msgs::Imu>    imu_sub_;
+
+  typedef message_filters::sync_policies::ApproximateTime<
+    nav_msgs::Odometry, 
+    sensor_msgs::Imu
+  > SyncPolicy;
+  message_filters::Synchronizer<SyncPolicy> sync_;
 };
 
-#endif // EKF_NODE_EKF_LOCALIZATION_H
+#endif  // EKF_NODE_EKF_LOCALIZATION_H

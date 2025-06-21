@@ -1,40 +1,71 @@
 #include "ekf_node/ekf_localization.h"
 
-EKFLocalization::EKFLocalization(ros::NodeHandle& nh) {
-  // Landmarken laden
-  XmlRpc::XmlRpcValue lm_list;
-  nh.getParam("landmarks", lm_list);
-  for (int i = 0; i < lm_list.size(); ++i) {
-    Landmark L;
-    L.id = (int)lm_list[i]["id"];
-    L.x  = (double)lm_list[i]["x"];
-    L.y  = (double)lm_list[i]["y"];
-    LM_.push_back(L);
+EKFLocalization::EKFLocalization(ros::NodeHandle& nh)
+: 
+  odom_sub_(nh, "/odom", 1),
+  imu_sub_(nh,  "/imu",  1),
+  sync_(SyncPolicy(10), odom_sub_, imu_sub_)
+{
+  // ### Initiale Pose aus TF holen ###
+  tf2_ros::Buffer tfBuffer;
+  tf2_ros::TransformListener tfListener(tfBuffer);
+  geometry_msgs::TransformStamped t;
+  // Warte kurz, bis AMCL die map→odom (und damit map→base_link) publiziert
+  ros::Duration(1.0).sleep();
+  try {
+    t = tfBuffer.lookupTransform("map", "base_link",
+                                 ros::Time(0), ros::Duration(1.0));
+  } catch (tf2::TransformException &ex) {
+    ROS_WARN("Initial TF fehlgeschlagen: %s", ex.what());
+    // Fallback auf 0,0,0
+    x_.setZero();
+    last_time_ = ros::Time::now();
   }
+  // Körperpose in map-Frame in x_ übernehmen
+  double yaw_init = tf2::getYaw(t.transform.rotation);
+  x_ << t.transform.translation.x,
+        t.transform.translation.y,
+        yaw_init,
+        0.0; // Startgeschwindigkeit auf 0 setzen
+  last_time_ = t.header.stamp;
+  // ### Ende Initialisierung ###
 
-  // Initialisierung
-  x_.setZero();
-  P_.setIdentity();  
-  Q_ = Eigen::Matrix3d::Identity() * 1e-3;
-  R_ = Eigen::Matrix2d::Identity() * 1e-2;
-  last_time_ = ros::Time::now();
+  // Filter-Initialisierung
+  P_ = Eigen::Matrix4d::Identity() * 0.1;   // Anfangs-Un­sicherheit
+  F_ = Eigen::Matrix4d::Identity();           
+  Q_ = Eigen::Matrix4d::Identity() * 1e-3;  // Prozessrauschen
+  // Messmatrix H und R
+  H_.setZero();
+  H_(0,3) = 1;  // v
+  H_(1,2) = 1;  // θ
+  R_ = Eigen::Matrix2d::Identity() * 1e-2;  // Messrauschen
 
-  // Subs & Pub
-  odom_sub_ = nh.subscribe("/odom", 10, &EKFLocalization::odomCallback, this); 
-  lm_sub_   = nh.subscribe("landmark_obs", 10, &EKFLocalization::lmCallback, this);
+  // Callback registrieren
+  sync_.registerCallback(
+    boost::bind(&EKFLocalization::ekfCallback, this, _1, _2)
+  );
+
+  // Publisher
   pose_pub_ = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("ekf_pose", 10);
 }
 
-void EKFLocalization::odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
-  predict(msg);
-  publishPose();
-}
+void EKFLocalization::ekfCallback(
+  const nav_msgs::Odometry::ConstPtr& odom,
+  const sensor_msgs::Imu::ConstPtr& imu)
+{
+  // 1) Prediction
+  predict(odom);
 
-void EKFLocalization::lmCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg) {
-  // hier id und Messvektor extrahieren (z.B. aus msg->pose.covariance oder eigener Struktur)
-  int id = msg->header.frame_id.empty() ? 0 : std::stoi(msg->header.frame_id);
-  Eigen::Vector2d z(msg->pose.pose.position.x, msg->pose.pose.position.y);
-  update(id, z);
+  // 2) Messvektor [v_meas; ω_meas]
+  double v = odom->twist.twist.linear.x;
+  double w = odom->twist.twist.angular.z;
+  Eigen::Vector2d z(v, w);
+
+  // 3) Correction
+  update(z);
+
+  // 4) Publish
+  publishPose();
 }
 
 void EKFLocalization::predict(const nav_msgs::Odometry::ConstPtr& odom) {
@@ -46,43 +77,30 @@ void EKFLocalization::predict(const nav_msgs::Odometry::ConstPtr& odom) {
   double w = odom->twist.twist.angular.z;
   double theta = x_(2);
 
-  // Zustandsvorhersage
-  x_(0) += v * dt * cos(theta);
-  x_(1) += v * dt * sin(theta);
+  x_(0) += v * dt * std::cos(theta);
+  x_(1) += v * dt * std::sin(theta);
   x_(2) += w * dt;
+  // x_(3) bleibt v
 
-  // Jacobi F
-  Eigen::Matrix3d F = Eigen::Matrix3d::Identity();
-  F(0,2) = -v * dt * sin(theta);
-  F(1,2) =  v * dt * cos(theta);
+  F_.setIdentity();
+  F_(0,2) = -v * dt * std::sin(theta);
+  F_(0,3) =      dt * std::cos(theta);
+  F_(1,2) =  v * dt * std::cos(theta);
+  F_(1,3) =      dt * std::sin(theta);
 
-  P_ = F * P_ * F.transpose() + Q_;
+  P_ = F_ * P_ * F_.transpose() + Q_;
 }
 
-void EKFLocalization::update(int id, const Eigen::Vector2d& z) {
-  // Landmark suchen
-  auto it = std::find_if(LM_.begin(), LM_.end(),
-    [&](const Landmark& L){ return L.id == id; });
-  if (it == LM_.end()) return;
+// Messkorrektur
+void EKFLocalization::update(const Eigen::Vector2d& z) {
+  Eigen::Vector2d y = z - H_ * x_;
+  // Winkel-Rate direkt, keine Normierung nötig
 
-  double dx = it->x - x_(0), dy = it->y - x_(1);
-  double q  = dx*dx + dy*dy;
-  double r_pred = std::sqrt(q), b_pred = std::atan2(dy,dx) - x_(2);
-
-  Eigen::Vector2d z_hat(r_pred, b_pred);
-  Eigen::Vector2d y = z - z_hat;
-
-  Eigen::Matrix<double,2,3> H;
-  H << -dx/r_pred, -dy/r_pred, 0,
-        dy/q,      -dx/q,     -1;
-
-  Eigen::Matrix2d S = H * P_ * H.transpose() + R_;
-  Eigen::Matrix<double,3,2> K = P_ * H.transpose() * S.inverse();
+  Eigen::Matrix2d S = H_ * P_ * H_.transpose() + R_;
+  Eigen::Matrix<double,4,2> K = P_ * H_.transpose() * S.inverse();
 
   x_ += K * y;
-  P_ = (Eigen::Matrix3d::Identity() - K * H) * P_;
-
-  publishPose();
+  P_ = (Eigen::Matrix4d::Identity() - K * H_) * P_;
 }
 
 void EKFLocalization::publishPose() {
@@ -90,14 +108,17 @@ void EKFLocalization::publishPose() {
   geometry_msgs::PoseWithCovarianceStamped out;
   out.header.stamp    = ros::Time::now();
   out.header.frame_id = "map";
+
   out.pose.pose.position.x = x_(0);
   out.pose.pose.position.y = x_(1);
-  tf2::Quaternion q; q.setRPY(0,0,x_(2));
+  tf2::Quaternion q;
+  q.setRPY(0, 0, x_(2));
   out.pose.pose.orientation = tf2::toMsg(q);
 
-  // 6×6-Covariance aus 3×3 P_
-  for(int i=0;i<6;i++) for(int j=0;j<6;j++)
-    out.pose.covariance[i*6+j] = (i<3&&j<3) ? P_(i,j) : 0;
+  // 6×6-Covariance (nur obere 3×3 füllen)
+  for (int i = 0; i < 6; ++i)
+    for (int j = 0; j < 6; ++j)
+      out.pose.covariance[i * 6 + j] = (i < 3 && j < 3) ? P_(i, j) : 0;
 
   pose_pub_.publish(out);
 }
