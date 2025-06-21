@@ -143,7 +143,6 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/pf_node_node.cpp)
 add_executable(pf_node
-  src/pf_node.cpp
   src/pf_localization.cpp
 )
 

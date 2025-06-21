@@ -1,157 +1,223 @@
 #include "pf_node/pf_localization.h"
 
-PFLocalization::PFLocalization(ros::NodeHandle& nh) {
-    // Landmarken laden
-    XmlRpc::XmlRpcValue lm_list;
-    nh.getParam("landmarks", lm_list);
-    for (int i = 0; i < lm_list.size(); ++i) {
-        Landmark L;
-        L.id = (int)lm_list[i]["id"];
-        L.x  = (double)lm_list[i]["x"];
-        L.y  = (double)lm_list[i]["y"];
-        LM_.push_back(L);
+PFLocalization::PFLocalization(ros::NodeHandle& nh)
+: odom_sub_(nh, "/odom", 1),
+  imu_sub_(nh,  "/imu",  1),
+  sync_(SyncPolicy(10), odom_sub_, imu_sub_)
+{
+  // Initiale Partikel auf 0 setzen
+  particles_.resize(num_particles_);
+  for (auto& p : particles_) {
+    p.x = 0.0;
+    p.y = 0.0;
+    p.theta = 0.0;
+    p.weight = 1.0 / num_particles_;
+  }
+
+  last_time_ = ros::Time::now();
+
+  // Rauschparameter
+  alpha1_ = 0.1;
+  alpha2_ = 0.1;
+  alpha3_ = 0.1;
+  alpha4_ = 0.1;
+
+  sync_.registerCallback(
+    boost::bind(&PFLocalization::pfCallback, this, _1, _2)
+  );
+
+  pose_pub_ = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("pf_pose", 10);
+  particle_pub_ = nh.advertise<geometry_msgs::PoseArray>("pf_particles", 10);
+  laser_sub_ = nh.subscribe("/scan", 1, &PFLocalization::laserCallback, this);
+  map_sub_   = nh.subscribe("/map",  1, &PFLocalization::mapCallback, this);
+}
+
+void PFLocalization::pfCallback(
+  const nav_msgs::Odometry::ConstPtr& odom,
+  const sensor_msgs::Imu::ConstPtr& imu)
+{
+  double v = odom->twist.twist.linear.x;
+  double w = odom->twist.twist.angular.z;
+  double dt = (odom->header.stamp - last_time_).toSec();
+  last_time_ = odom->header.stamp;
+
+  motionUpdate(v, w, dt);
+  publishPose();
+  publishParticles();
+}
+
+void PFLocalization::motionUpdate(double v, double w, double dt) {
+  std::normal_distribution<double> dist1(0, std::sqrt(alpha1_ * v * v + alpha2_ * w * w));
+  std::normal_distribution<double> dist2(0, std::sqrt(alpha3_ * v * v + alpha4_ * w * w));
+  std::normal_distribution<double> dist3(0, std::sqrt(alpha1_ * v * v + alpha2_ * w * w));
+
+  for (auto& p : particles_) {
+    double v_hat = v + dist1(rng_);
+    double w_hat = w + dist2(rng_);
+    double gamma_hat = dist3(rng_);
+
+    if (std::abs(w_hat) > 1e-6) {
+      double r = v_hat / w_hat;
+      p.x += -r * sin(p.theta) + r * sin(p.theta + w_hat * dt);
+      p.y +=  r * cos(p.theta) - r * cos(p.theta + w_hat * dt);
+    } else {
+      p.x += v_hat * dt * cos(p.theta);
+      p.y += v_hat * dt * sin(p.theta);
     }
 
-    // Partikel initialisieren
-    initParticles(1000);  // Anzahl anpassbar
-    last_time_ = ros::Time::now();
+    p.theta += w_hat * dt + gamma_hat;
+    p.theta = atan2(sin(p.theta), cos(p.theta));  // Normierung
+  }
+}
+  //measurementUpdate(measured_theta);
+  //resample();
+void PFLocalization::publishPose() {
+  geometry_msgs::PoseWithCovarianceStamped out;
+  out.header.stamp = ros::Time::now();
+  out.header.frame_id = "map";
 
-    // ROS-Subs/Pubs
-    odom_sub_ = nh.subscribe("/odom", 10, &PFLocalization::odomCallback, this);
-    lm_sub_   = nh.subscribe("landmark_obs", 10, &PFLocalization::lmCallback, this);
-    pose_pub_ = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("pf_pose", 10);
-    particle_cloud_pub_ = nh.advertise<geometry_msgs::PoseArray>("particle_cloud", 10);  // Neu
+  // Pose = gewichteter Mittelwert
+  double x = 0, y = 0, theta = 0;
+  for (const auto& p : particles_) {
+    x     += p.weight * p.x;
+    y     += p.weight * p.y;
+    theta += p.weight * p.theta;
+  }
+
+  out.pose.pose.position.x = x;
+  out.pose.pose.position.y = y;
+  tf2::Quaternion q;
+  q.setRPY(0, 0, theta);
+  out.pose.pose.orientation = tf2::toMsg(q);
+
+  // Kovarianz schätzen (3x3 aus [x, y, theta])
+  Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
+  for (const auto& p : particles_) {
+    Eigen::Vector3d diff(p.x - x, p.y - y, angles::shortest_angular_distance(theta, p.theta));
+    cov += p.weight * diff * diff.transpose();
+  }
+
+  // In 6x6 eintragen
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j)
+      out.pose.covariance[i * 6 + j] = cov(i, j);
+
+  pose_pub_.publish(out);
 }
 
-void PFLocalization::initParticles(int N) {
-    particles_.resize(N);
-    std::uniform_real_distribution<double> dist(-1.0, 1.0);  // Initiale Verteilung anpassen
-    for (auto& p : particles_) {
-        p.pose << dist(rng_), dist(rng_), dist(rng_) * M_PI;
-        p.weight = 1.0 / N;
+void PFLocalization::publishParticles() {
+  geometry_msgs::PoseArray array;
+  array.header.stamp = ros::Time::now();
+  array.header.frame_id = "map";
+
+  for (const auto& p : particles_) {
+    geometry_msgs::Pose pose;
+    pose.position.x = p.x;
+    pose.position.y = p.y;
+    pose.position.z = 0.0;
+    tf2::Quaternion q;
+    q.setRPY(0, 0, p.theta);
+    pose.orientation = tf2::toMsg(q);
+    array.poses.push_back(pose);
+  }
+
+  particle_pub_.publish(array);
+}
+
+void PFLocalization::mapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
+  map_ = *msg;
+  map_received_ = true;
+  ROS_INFO_ONCE("Map empfangen.");
+}
+
+void PFLocalization::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan) {
+  if (!map_received_) return;
+  measurementUpdate(scan);
+  resample();  // optional
+}
+
+void PFLocalization::measurementUpdate(const sensor_msgs::LaserScan::ConstPtr& scan) {
+  const int step = 10; // Scanstrahlen nur jede 10. auswerten
+  const double z_hit = 0.8;
+  const double z_rand = 0.2;
+  const double sigma = 0.2;
+
+  for (auto& p : particles_) {
+    double weight = 1e-6;
+
+    for (size_t i = 0; i < scan->ranges.size(); i += step) {
+      double angle = p.theta + scan->angle_min + i * scan->angle_increment;
+      double dist  = scan->ranges[i];
+      if (dist < scan->range_min || dist > scan->range_max) continue;
+
+      double mx = p.x + dist * cos(angle);
+      double my = p.y + dist * sin(angle);
+
+      int map_x = (mx - map_.info.origin.position.x) / map_.info.resolution;
+      int map_y = (my - map_.info.origin.position.y) / map_.info.resolution;
+      int index = map_y * map_.info.width + map_x;
+
+      if (map_x >= 0 && map_x < (int)map_.info.width &&
+          map_y >= 0 && map_y < (int)map_.info.height) {
+        int8_t cell = map_.data[index];
+        if (cell > 50) {
+          weight += z_hit;
+        } else {
+          weight += z_rand;
+        }
+      }
     }
+
+    p.weight = weight;
+  }
+
+  // Normalisieren
+  double sum = 0.0;
+  for (const auto& p : particles_) sum += p.weight;
+  for (auto& p : particles_) p.weight /= (sum + 1e-6);
 }
-
-void PFLocalization::odomCallback(const nav_msgs::Odometry::ConstPtr& msg) {
-    predict(msg);
-    publishPose();
-}
-
-void PFLocalization::lmCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msg) {
-    int id = msg->header.frame_id.empty() ? 0 : std::stoi(msg->header.frame_id);
-    Eigen::Vector2d z(msg->pose.pose.position.x, msg->pose.pose.position.y);
-    update(id, z);
-}
-
-void PFLocalization::predict(const nav_msgs::Odometry::ConstPtr& odom) {
-    ros::Time now = odom->header.stamp;
-    double dt = (now - last_time_).toSec();
-    last_time_ = now;
-
-    double v = odom->twist.twist.linear.x;
-    double w = odom->twist.twist.angular.z;
-    std::normal_distribution<double> noise(0.0, 0.05);  // Rauschen anpassen
-
-    for (auto& p : particles_) {
-        double theta = p.pose(2);
-        p.pose(0) += (v * dt * cos(theta)) + noise(rng_);
-        p.pose(1) += (v * dt * sin(theta)) + noise(rng_);
-        p.pose(2) += (w * dt) + noise(rng_);
-    }
-}
-
-
-void PFLocalization::update(int id, const Eigen::Vector2d& z) {
-    // Landmarke finden
-    auto it = std::find_if(LM_.begin(), LM_.end(), [&](const Landmark& L){ return L.id == id; });
-    if (it == LM_.end()) return;
-
-    // Gewichte aktualisieren (Likelihood)
-    double sum_weights = 0.0;
-    for (auto& p : particles_) {
-        double dx = it->x - p.pose(0);
-        double dy = it->y - p.pose(1);
-        double r_pred = sqrt(dx*dx + dy*dy);
-        double b_pred = atan2(dy, dx) - p.pose(2);
-        
-        // Gaußsche Likelihood (Rauschen anpassen)
-        double likelihood = exp(-0.5 * (pow(z(0) - r_pred, 2) / 0.1 + pow(z(1) - b_pred, 2) / 0.1));
-        p.weight *= likelihood;
-        sum_weights += p.weight;
-    }
-
-    // Normalisieren
-    for (auto& p : particles_) p.weight /= sum_weights;
-
-    // Resampling
-    resample();
-}
-
-
 
 void PFLocalization::resample() {
-    std::vector<Particle> new_particles;
-    std::vector<double> weights;
-    for (const auto& p : particles_) weights.push_back(p.weight);
+  // Sortiere Partikel nach Gewicht (absteigend)
+  std::sort(particles_.begin(), particles_.end(),
+            [](const Particle& a, const Particle& b) { return a.weight > b.weight; });
 
-    std::discrete_distribution<int> dist(weights.begin(), weights.end());
-    for (size_t i = 0; i < particles_.size(); ++i) {
-        int idx = dist(rng_);
-        new_particles.push_back(particles_[idx]);
-        new_particles.back().weight = 1.0 / particles_.size();  // Gewichte zurücksetzen
-    }
-    particles_ = std::move(new_particles);
+  // Behalte die besten 50%
+  int keep = num_particles_ / 2;
+  std::vector<Particle> new_particles(particles_.begin(), particles_.begin() + keep);
+
+  // Neue verrauschte Partikel aus den besten 50%
+  std::normal_distribution<double> noise_x(0, 0.05);
+  std::normal_distribution<double> noise_y(0, 0.05);
+  std::normal_distribution<double> noise_theta(0, 0.05);
+
+  for (int i = 0; i < num_particles_ - keep; ++i) {
+    const Particle& base = new_particles[i % keep];
+    Particle p;
+    p.x = base.x + noise_x(rng_);
+    p.y = base.y + noise_y(rng_);
+    p.theta = base.theta + noise_theta(rng_);
+    p.theta = atan2(sin(p.theta), cos(p.theta));
+    p.weight = 1.0 / num_particles_;
+    new_particles.push_back(p);
+  }
+
+  particles_ = new_particles;
 }
 
 
-void PFLocalization::publishPose() {
-    // ROS-Nachricht erstellen
-    geometry_msgs::PoseWithCovarianceStamped out;
-    out.header.stamp    = ros::Time::now();
-    out.header.frame_id = "map";
+int main(int argc, char** argv) {
+  // Initialisiere ROS-Node mit Namen "pf_node"
+  ros::init(argc, argv, "pf_node");
 
-    // Pose als Mittelwert der Partikel
-    Eigen::Vector3d mean = Eigen::Vector3d::Zero();
-    for (const auto& p : particles_) mean += p.pose;
-    mean /= particles_.size();
-    
-    out.pose.pose.position.x = mean(0);
-    out.pose.pose.position.y = mean(1);
-    tf2::Quaternion q; 
-    q.setRPY(0, 0, mean(2));
-    out.pose.pose.orientation = tf2::toMsg(q);
+  // Erzeuge NodeHandle im privaten Namensraum (~)
+  ros::NodeHandle nh("~");
 
-    // Empirische Covariance aus Partikeln
-    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
-    for (const auto& p : particles_) {
-        Eigen::Vector3d diff = p.pose - mean;
-        cov += diff * diff.transpose();
-    }
-    cov /= particles_.size();
+  // Erzeuge PF-Objekt, das sich um Subscriptions, Publikation und Berechnung kümmert
+  PFLocalization pf(nh);
 
-    // 6×6-Covariance (nur Position/Orientation)
-    for (int i = 0; i < 6; i++) {
-        for (int j = 0; j < 6; j++) {
-            out.pose.covariance[i*6 + j] = (i < 3 && j < 3) ? cov(i, j) : 0;
-        }
-    }
+  // Starte ROS-Ereignisschleife
+  ros::spin();
 
-    // Partikelwolke als PoseArray publizieren
-    geometry_msgs::PoseArray particle_cloud;
-    particle_cloud.header.stamp = ros::Time::now();
-    particle_cloud.header.frame_id = "map";
-
-    for (const auto& p : particles_) {
-        geometry_msgs::Pose pose;
-        pose.position.x = p.pose(0);
-        pose.position.y = p.pose(1);
-        tf2::Quaternion q;
-        q.setRPY(0, 0, p.pose(2));
-        pose.orientation = tf2::toMsg(q);
-        particle_cloud.poses.push_back(pose);
-    }
-
-    particle_cloud_pub_.publish(particle_cloud);  // Partikelwolke senden
-
-    pose_pub_.publish(out);
+  return 0;
 }
