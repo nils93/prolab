@@ -80,7 +80,6 @@ void KFLocalization::predict(const nav_msgs::Odometry::ConstPtr& odom) {
   // Zustand vorhersagen: μ̄ₜ = A μₜ₋₁ + B uₜ
   mu_(0) += v * dt * cos(theta);  // x
   mu_(1) += v * dt * sin(theta);  // y
-  mu_(3)  = v;                    // Geschwindigkeit aktualisieren
 
   // A aktualisieren
   A_.setIdentity();

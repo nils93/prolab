@@ -9,6 +9,13 @@ Panels:
         - /Grid1
         - /RobotModel1
         - /Map1
+        - /PoseWithCovariance1
+        - /PoseWithCovariance1/Covariance1
+        - /PoseWithCovariance1/Covariance1/Position1
+        - /PoseWithCovariance2
+        - /PoseWithCovariance2/Covariance1
+        - /PoseWithCovariance2/Covariance1/Position1
+        - /PoseWithCovariance2/Covariance1/Orientation1
       Splitter Ratio: 0.5
     Tree Height: 658
   - Class: rviz/Selection
@@ -129,7 +136,7 @@ Visualization Manager:
           Value: true
         Position:
           Alpha: 0.30000001192092896
-          Color: 204; 51; 204
+          Color: 239; 41; 41
           Scale: 1
           Value: true
         Value: true
@@ -142,6 +149,37 @@ Visualization Manager:
       Shaft Radius: 0.05000000074505806
       Shape: Arrow
       Topic: /kf_node/kf_pose
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz/PoseWithCovariance
+      Color: 114; 159; 207
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 114; 159; 207
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: PoseWithCovariance
+      Queue Size: 10
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic: /ekf_node/ekf_pose
       Unreliable: false
       Value: true
   Enabled: true
@@ -209,4 +247,4 @@ Window Geometry:
     collapsed: false
   Width: 1197
   X: 2554
-  Y: 1132
+  Y: 1095

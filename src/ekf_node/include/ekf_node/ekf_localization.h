@@ -29,13 +29,12 @@ public:
   EKFLocalization(ros::NodeHandle& nh);
 
 private:
-  // ekf-Zustand und Kovarianzmatrizen
-  Eigen::Vector4d x_;           // [x, y, θ, v]
-  Eigen::Matrix4d P_;           // State-Cov
-  Eigen::Matrix4d F_;           // Systemmatrix
-  Eigen::Matrix4d Q_;           // Prozessrauschen
-  Eigen::Matrix<double,2,4> H_; // Messmatrix [v_meas; θ_meas]
-  Eigen::Matrix2d R_;           // Messrauschen
+  // EKF-Zustand
+  Eigen::Vector3d mu_;           // Zustand [x, y, theta]
+  Eigen::Matrix3d Sigma_;        // Kovarianzmatrix
+  Eigen::Matrix3d G_;            // Jacobi-Matrix der Bewegung
+  Eigen::Matrix3d R_;            // Prozessrauschen
+  Eigen::Matrix2d Q_;            // Messrauschen
 
   // ROS Subscriber und Publisher
   ros::Publisher pose_pub_; // veröffentlichte geschätzte Pose
@@ -47,17 +46,17 @@ private:
     const nav_msgs::Odometry::ConstPtr& odom,
     const sensor_msgs::Imu::ConstPtr& imu);
 
-  // ekf-Schritte
+  // KF-Schritte
   void predict(const nav_msgs::Odometry::ConstPtr& odom); // Bewegungsvorhersage
-  void update(const Eigen::Vector2d& z);           // Korrektur mit Messvektor
-  void publishPose();                          // Ausgabe der geschätzten Pose als ROS-Topic
+  void update(const Eigen::VectorXd& z); // Korrektur mit Messvektor
+  void publishPose(); // Ausgabe der geschätzten Pose als ROS-Topic
 
   // Message-Filters für Odom + IMU
   message_filters::Subscriber<nav_msgs::Odometry> odom_sub_;
   message_filters::Subscriber<sensor_msgs::Imu>    imu_sub_;
 
   typedef message_filters::sync_policies::ApproximateTime<
-    nav_msgs::Odometry, 
+    nav_msgs::Odometry,
     sensor_msgs::Imu
   > SyncPolicy;
   message_filters::Synchronizer<SyncPolicy> sync_;
