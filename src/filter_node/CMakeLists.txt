@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(ekf_node)
+project(filter_node)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -8,11 +8,12 @@ project(ekf_node)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  geometry_msgs
-  map_server
+  message_filters
   nav_msgs
   roscpp
   sensor_msgs
+  std_msgs
+  tf2_geometry_msgs
   tf2_ros
 )
 
@@ -75,7 +76,7 @@ find_package(Eigen3 REQUIRED)
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   geometry_msgs#   nav_msgs#   sensor_msgs
+#   nav_msgs#   sensor_msgs#   std_msgs#   tf2_geometry_msgs
 # )
 
 ################################################
@@ -109,8 +110,8 @@ find_package(Eigen3 REQUIRED)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES ekf_node
-#  CATKIN_DEPENDS geometry_msgs map_server nav_msgs roscpp sensor_msgs tf2_ros
+#  LIBRARIES filter_node
+#  CATKIN_DEPENDS message_filters nav_msgs roscpp sensor_msgs std_msgs tf2_geometry_msgs tf2_ros
 #  DEPENDS system_lib
 )
 
@@ -128,7 +129,7 @@ include_directories(
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/ekf_node.cpp
+#   src/${PROJECT_NAME}/filter_node.cpp
 # )
 
 ## Add cmake target dependencies of the library
@@ -139,11 +140,7 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/ekf_node_node.cpp)
-add_executable(ekf_node
-  src/ekf_node.cpp
-  src/ekf_localization.cpp
-)
+# add_executable(${PROJECT_NAME}_node src/filter_node_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -207,13 +204,22 @@ add_executable(ekf_node
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_ekf_node.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_filter_node.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()
-target_link_libraries(ekf_node
-  ${catkin_LIBRARIES}
-)
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+## KF
+add_executable(kf_node src/kf.cpp)
+target_link_libraries(kf_node ${catkin_LIBRARIES})
+
+## EKF
+add_executable(ekf_node src/ekf.cpp)
+target_link_libraries(ekf_node ${catkin_LIBRARIES})
+
+## PF
+add_executable(pf_node src/pf.cpp)
+target_link_libraries(pf_node ${catkin_LIBRARIES})
