@@ -63,32 +63,46 @@ killall -9 roscore rosmaster rosout gzserver gzclient
 catkin clean -y
 ```
 
-## 6. First Filter implemented: EKF
+## 6. Create the catkin
 ```bash
-header: 
-  seq: 12806
-  stamp: 
-    secs: 1712
-    nsecs: 540000000
-  frame_id: "map"
-pose: 
-  pose: 
-    position: 
-      x: 0.335299812381564
-      y: -0.008349527280484794
-      z: 0.0
-    orientation: 
-      x: 0.0
-      y: 0.0
-      z: -0.9943416899982722
-      w: 0.10622901454583862
-  covariance: [0.013686038362359095, -0.0024724910473428773, -0.00048270061444676644, 0.0, 0.0, 0.0, -0.0024724910473428725, 0.010599706078336685, 0.00014468562373250304, 0.0, 0.0, 0.0, -0.00048270061444676704, 0.00014468562373250271, 0.008091739755542917, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
----
+catkin build
 ```
 
-7. Comparison between `/ekf_node/ekf_pose` and `/gazebo/model_states`
+## 7. Start the nodes
+Terminal 1
 ```bash
-cd ~/turtle_ws/src/ekf_node/scripts/ekf_analysis/
+roscore
+```
+Terminal 2
+```bash
+roslaunch example_package start.launch
+```
+Terminal 3
+```bash
+roslaunch filter_node filter.launch
+```
+
+## 8. Record the filter performance
+Terminal 4
+```bash
+cd ~/turtle_ws/scripts/analyse/kf/
+rosbag record /kf_node/kf_pose /gazebo/model_states
+```
+Terminal 5
+```bash
+cd ~/turtle_ws/scripts/analyse/ekf/
 rosbag record /ekf_node/ekf_pose /gazebo/model_states
-./main.py 
+```
+Terminal 6
+```bash
+cd ~/turtle_ws/scripts/analyse/pf/
+rosbag record /pf_node/pf_particles /gazebo/model_states
+```
+
+## 9. Analyse the filter performance
+Terminal 7
+Start the script with the desired ARG (kf, ekf, pf)
+```bash
+cd ~/turtle_ws/scripts/analyse
+./main.py --filter ARG
 ```
