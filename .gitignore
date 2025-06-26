@@ -1,3 +1,4 @@
+.vscode/
 .catkin_tools/
 devel/
 logs/
@@ -53,5 +54,12 @@ CATKIN_IGNORE
 
 # Eigene Erweiterungen
 src/ekf_node_scripts/ekf_analyse/export/
-src/filter_node
 *.bag
+*.zip
+*.png
+
+# Verzeichnisse
+scripts/analyse/__pycache__/
+scripts/analyse/kf/
+scripts/analyse/ekf/
+scripts/analyse/pf/
