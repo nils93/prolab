@@ -1,0 +1,29 @@
+<launch>
+
+  <!-- Simulationszeit aktivieren -->
+  <param name="use_sim_time" value="true"/>
+
+  <!-- Fester statischer TF zwischen map und odom -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom"
+        args="0 0 0 0 0 0 map odom"/>
+
+  <!-- Landmark Mapping Node -->
+  <node pkg="landmark_mapper" type="landmark_mapper_node" name="lm_node" output="screen">
+    <param name="use_sim_time" value="true"/>
+    <remap from="/scan" to="/scan"/>      <!-- falls Scan-Topic abweichend ist -->
+    <remap from="/odom" to="/odom"/>      <!-- falls Odom nötig ist -->
+  </node>
+
+    <!-- Color Sample Node -->
+  <node pkg="landmark_mapper" type="color_sampler_node" name="cs_node" output="screen">
+    <param name="use_sim_time" value="true"/>
+    <remap from="/scan" to="/scan"/> 
+   <remap from="/camera/image_raw" to="/camera/image"/> 
+  </node>
+
+    <!-- Für Debug-Zwecke: Zeige das Bild mit image_view -->
+    <node pkg="rqt_image_view" type="rqt_image_view" name="image_debug" output="screen" args="/camera/image"/>
+
+
+
+</launch>

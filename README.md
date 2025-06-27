@@ -29,9 +29,9 @@ Make sure the env variable **TURTLEBOT3_MODEL** is set:
 ```bash
 echo $TURTLEBOT3_MODEL
 ```
-When it's not equal to **burger**, change it:
+When it's not equal to **burger_for_autorace**, change it:
 ```bash
-export TURTLEBOT3_MODEL=burger
+export TURTLEBOT3_MODEL=burger_for_autorace
 ```
 
 ## 3. Start **roscore**

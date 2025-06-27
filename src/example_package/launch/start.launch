@@ -1,7 +1,8 @@
 <launch>
   <include file="$(find gazebo_ros)launch/empty_world.launch">
-      <arg name="world_name" value="$(find example_package)/world/playground.world" />
+      <arg name="world_name" value="$(find example_package)/world/another_playground.world" />
       <arg name="gui" value="true" />
+      <arg name="headless" value="false"/>
       <arg name="use_sim_time" value="true" />
       <arg name="paused" value="false" />
   </include>
