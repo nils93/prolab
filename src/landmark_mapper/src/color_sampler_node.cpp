@@ -27,13 +27,15 @@ void ColorSampler::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
   cv_img_ = cv_ptr->image.clone();  // optional: clone für Sicherheit
 }
 
-void ColorSampler::landmarkCallback(const visualization_msgs::MarkerArray::ConstPtr&) {
+void ColorSampler::landmarkCallback(const visualization_msgs::Marker::ConstPtr&) {
   if (cv_img_.empty()) return;
-  if ((ros::Time::now() - last_save_time_).toSec() < 1.0) return;  // <== MARKIERT
+  if ((ros::Time::now() - last_save_time_).toSec() < 1.0) return;
 
   std::vector<Landmark> updated;
 
   for (const auto& lm : landmarks_) {
+    if (lm.descriptor.size() < 3) continue;  // <== MARKIERT: nur gültige LM
+
     geometry_msgs::PointStamped map_pt, cam_pt;
     map_pt.header.frame_id = "map";
     map_pt.header.stamp = ros::Time(0);
@@ -64,7 +66,7 @@ void ColorSampler::landmarkCallback(const visualization_msgs::MarkerArray::Const
         new_lm.descriptor.push_back(color[1]); // G
         new_lm.descriptor.push_back(color[0]); // B
         updated.push_back(new_lm);
-        ROS_INFO("Landmark (%.2f, %.2f) → Farbe: [%d, %d, %d]",
+        ROS_INFO("✅ Farbe für LM (%.2f, %.2f): [%d, %d, %d]",
                  lm.x, lm.y, color[2], color[1], color[0]);
       }
     } catch (tf2::TransformException& ex) {
@@ -72,8 +74,10 @@ void ColorSampler::landmarkCallback(const visualization_msgs::MarkerArray::Const
     }
   }
 
-  saveUpdated(updated);
-  last_save_time_ = ros::Time::now();  // <== MARKIERT
+  if (!updated.empty()) {
+    saveUpdated(updated);
+    last_save_time_ = ros::Time::now();
+  }
 }
 
 void ColorSampler::loadLandmarks() {
@@ -110,7 +114,12 @@ void ColorSampler::saveUpdated(const std::vector<Landmark>& updated) {
       out << ", " << d;
     out << "]\n";
   }
-  ROS_INFO("Landmarken mit Farben gespeichert → %s", path.c_str());
+  for (const auto& lm : updated) {
+    int R = lm.descriptor[3];
+    int G = lm.descriptor[4];
+    int B = lm.descriptor[5];
+    ROS_INFO("💾 LM (%.2f, %.2f) → RGB [%d, %d, %d]", lm.x, lm.y, R, G, B);
+  }
 }
 
 int main(int argc, char** argv) {

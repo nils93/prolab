@@ -107,7 +107,7 @@ void LandmarkMapper::detectHoughLines(const std::vector<Eigen::Vector2d>& points
           lm.type = 0;
           lm.rgb = getSimulatedColor(lm.x, lm.y);
           raw_landmarks_.push_back(lm);
-          ROS_INFO("🔵 Linien-LM gespeichert: (%.2f, %.2f)", lm.x, lm.y);
+          ROS_INFO("Linien-LM gespeichert: (%.2f, %.2f)", lm.x, lm.y);
         } catch (tf2::TransformException& ex) {
           ROS_WARN("TF fehlgeschlagen: %s", ex.what());
         }
@@ -171,7 +171,7 @@ void LandmarkMapper::detectCircle(const std::vector<Eigen::Vector2d>& points) {
         lm.type = 1;
         lm.rgb = getSimulatedColor(lm.x, lm.y);
         raw_landmarks_.push_back(lm);
-        ROS_INFO("🟠 Kreis-LM gespeichert: (%.2f, %.2f), r=%.2f", lm.x, lm.y, radius);
+        ROS_INFO("Kreis-LM gespeichert: (%.2f, %.2f), r=%.2f", lm.x, lm.y, radius);
         return;
       } catch (tf2::TransformException& ex) {
         ROS_WARN("TF fehlgeschlagen: %s", ex.what());
@@ -193,7 +193,7 @@ void LandmarkMapper::saveLandmarks() {
     out << "  " << i + 1 << ": [" << lm.x << ", " << lm.y << ", [" << lm.rho_or_radius << ", " << lm.theta << ", " << lm.type
         << ", [" << lm.rgb[0] << ", " << lm.rgb[1] << ", " << lm.rgb[2] << "]]]\n";
   }
-  ROS_INFO("📝 %lu Landmarken gespeichert: %s", raw_landmarks_.size(), path.c_str());
+  ROS_INFO("%lu Landmarken gespeichert: %s", raw_landmarks_.size(), path.c_str());
 }
 
 std::array<int, 3> LandmarkMapper::getSimulatedColor(double x, double y) {

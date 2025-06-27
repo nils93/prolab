@@ -26,7 +26,7 @@ public:
 
 private:
   void imageCallback(const sensor_msgs::ImageConstPtr& msg);
-  void landmarkCallback(const visualization_msgs::MarkerArray::ConstPtr& msg);
+  void landmarkCallback(const visualization_msgs::Marker::ConstPtr& msg);
   void loadLandmarks();
   void saveUpdated(const std::vector<Landmark>& updated);
 
