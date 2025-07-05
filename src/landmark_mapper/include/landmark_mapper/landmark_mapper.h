@@ -1,37 +1,34 @@
-// landmark_mapper.h
-#pragma once
+#ifndef LANDMARK_MAPPER_LANDMARK_MAPPER_H
+#define LANDMARK_MAPPER_LANDMARK_MAPPER_H
 
 #include <ros/ros.h>
-#include <sensor_msgs/LaserScan.h>
-#include <geometry_msgs/PointStamped.h>
-#include <vector>
-#include <Eigen/Dense>
-#include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
-#include <geometry_msgs/TransformStamped.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <cmath>
-#include <random>
+#include <vector>
+#include <string>
+#include "landmark_mapper/ColorSample.h"
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>  // für fromMsg()
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 
-class ColorSampler;  // Forward declaration
+struct Landmark {
+  double x,y, rho, theta;
+  std::string color;
+};
 
 class LandmarkMapper {
 public:
-  LandmarkMapper(ros::NodeHandle& nh);
-  void setColorSampler(ColorSampler* cs);  // <-- NEU
-
+  LandmarkMapper(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+  void saveLandmarks();
 private:
-  void scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg);
-  void detectHoughLines(const std::vector<Eigen::Vector2d>& points);
-  void detectCircle(const std::vector<Eigen::Vector2d>& points);
-  void publishLandmark(double x, double y, double rho_or_radius, double theta, int type);
-
-  ros::NodeHandle nh_;
-  ros::Subscriber sub_scan_;
-
-  tf2_ros::Buffer tfBuffer_;
-  tf2_ros::TransformListener tfListener_;
-
-  std::vector<Eigen::Vector2d> known_positions_;
-  ColorSampler* cs_ = nullptr;  // <-- NEU
+  void sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg);
+  void saveCb(const ros::TimerEvent&);
+  
+  ros::Subscriber    sub_;
+  ros::Timer         timer_;
+  tf2_ros::Buffer    tf_buf_;
+  tf2_ros::TransformListener tf_ls_;
+  std::vector<Landmark> data_;
+  std::string out_path_;
 };
+
+#endif // LANDMARK_MAPPER_LANDMARK_MAPPER_H

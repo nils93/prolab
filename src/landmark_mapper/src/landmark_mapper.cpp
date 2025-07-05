@@ -1,171 +1,94 @@
-// landmark_mapper.cpp
-
+#include <ros/ros.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
 #include "landmark_mapper/landmark_mapper.h"
-#include "color_sampler_node/color_sampler_node.h"
+#include <filesystem>
+namespace fs = std::filesystem;
 
-LandmarkMapper::LandmarkMapper(ros::NodeHandle& nh)
-: nh_(nh), tfBuffer_(), tfListener_(tfBuffer_) {
-  sub_scan_ = nh_.subscribe("scan", 1, &LandmarkMapper::scanCallback, this);
-  ROS_INFO("LandmarkMapper gestartet");
+LandmarkMapper::LandmarkMapper(ros::NodeHandle& nh, ros::NodeHandle& pnh)
+: tf_ls_(tf_buf_) 
+{
+  // Parameter aus privatem Handle
+  pnh.param<std::string>("output_path", out_path_, "mapped_landmarks.yaml");
+  ROS_INFO("LandmarkMapper: saving landmarks to '%s'", out_path_.c_str());
+  // Subscriber auf globales Topic
+  sub_   = nh.subscribe("color_sample", 10, &LandmarkMapper::sampleCb, this);
+  // Timer zum periodischen Speichern
+  timer_ = nh.createTimer(ros::Duration(5.0), &LandmarkMapper::saveCb, this);
 }
 
-void LandmarkMapper::setColorSampler(ColorSampler* cs) {
-  cs_ = cs;
-}
+void LandmarkMapper::sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg){
+  geometry_msgs::TransformStamped tfst;
+  try{
+    tfst = tf_buf_.lookupTransform("map","base_link",ros::Time(0),ros::Duration(0.1));
+  } catch(...){ return; }
+  double xr = tfst.transform.translation.x;
+  double yr = tfst.transform.translation.y;
+  tf2::Quaternion q;
+  tf2::fromMsg(tfst.transform.rotation, q);
 
-void LandmarkMapper::scanCallback(const sensor_msgs::LaserScan::ConstPtr& msg) {
-  std::vector<Eigen::Vector2d> points;
-  double angle = msg->angle_min;
+  // Yaw extrahieren
+  double roll, pitch, yaw;
+  tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+  double x = xr + msg->rho * cos(yaw + msg->theta);
+  double y = yr + msg->rho * sin(yaw + msg->theta);
 
-  for (const auto& r : msg->ranges) {
-    if (r > msg->range_min && r < msg->range_max) {
-      double x = r * std::cos(angle);
-      double y = r * std::sin(angle);
-      points.emplace_back(x, y);
-    }
-    angle += msg->angle_increment;
+  for(auto& lm:data_){
+    if(fabs(lm.x-x)<0.1 && fabs(lm.y-y)<0.1 && lm.color==msg->color) return;
   }
-
-  detectHoughLines(points);
-  detectCircle(points);
-  //ROS_INFO("ScanCallback erhalten: %lu Punkte", points.size());
+  data_.push_back({x,y,msg->rho,msg->theta,msg->color});
 }
 
-void LandmarkMapper::detectHoughLines(const std::vector<Eigen::Vector2d>& points) {
-  const double theta_res = M_PI / 180.0;
-  const double rho_res = 0.05;
-  const int width = 180;
-  const int height = 400;
-  std::vector<std::vector<int>> accumulator(width, std::vector<int>(height, 0));
-
-  for (const auto& pt : points) {
-    double x = pt.x();
-    double y = pt.y();
-    for (int t = 0; t < width; ++t) {
-      double theta = t * theta_res;
-      double rho = x * cos(theta) + y * sin(theta);
-      int r_idx = static_cast<int>((rho + 10.0) / rho_res);
-      if (r_idx >= 0 && r_idx < height) {
-        accumulator[t][r_idx]++;
-      }
-    }
+void LandmarkMapper::saveCb(const ros::TimerEvent&){
+  YAML::Emitter out;
+  out<<YAML::BeginSeq;
+  for(auto& lm:data_){
+    out<<YAML::Flow<<YAML::BeginSeq
+       <<lm.x<<lm.y<<lm.rho<<lm.theta<<lm.color
+       <<YAML::EndSeq;
   }
-
-  const int threshold =20;                // vorher 100
-  for (int t = 0; t < width; ++t) {
-    for (int r = 0; r < height; ++r) {
-      if (accumulator[t][r] > threshold) {
-        double theta = t * theta_res;
-        double rho = r * rho_res - 10.0;
-        double a = cos(theta), b = sin(theta);
-        double x0 = a * rho, y0 = b * rho;
-
-        //ROS_INFO("Hough-Line detected: theta=%.2f, ρ=%.2f, votes=%d", theta, rho, accumulator[t][r]);
-
-        geometry_msgs::PointStamped ps, ps_out;
-        ps.header.stamp = ros::Time(0);
-        ps.header.frame_id = "base_link";
-        ps.point.x = x0;
-        ps.point.y = y0;
-
-        try {
-          tfBuffer_.transform(ps, ps_out, "map", ros::Duration(1.0));
-          Eigen::Vector2d pos(ps_out.point.x, ps_out.point.y);
-          bool known = false;
-          for (const auto& k : known_positions_) {
-            if ((pos - k).norm() < 0.3) {
-              known = true;
-              break;
-            }
-          }
-          if (known) continue;
-
-          known_positions_.push_back(pos);
-          publishLandmark(pos.x(), pos.y(), rho, theta, 0);
-        } catch (...) {}
-      }
-    }
-  }
+  out<<YAML::EndSeq;
+  std::ofstream f(out_path_);
+  f<<out.c_str();
+  ROS_INFO("Wrote %lu landmarks", data_.size());
 }
 
-void LandmarkMapper::detectCircle(const std::vector<Eigen::Vector2d>& points) {
-  if (points.size() < 10) return;
-
-  const int max_iter = 100;
-  const double thresh = 0.1;
-  const int min_inliers = 5;
-
-  std::default_random_engine gen;
-  std::uniform_int_distribution<size_t> dist(0, points.size() - 1);
-
-  for (int iter = 0; iter < max_iter; ++iter) {
-    size_t i1 = dist(gen), i2 = dist(gen), i3 = dist(gen);
-    if (i1 == i2 || i1 == i3 || i2 == i3) continue;
-
-    const auto& A = points[i1], B = points[i2], C = points[i3];
-
-    double a = 2 * (B.x() - A.x()), b = 2 * (B.y() - A.y());
-    double c = 2 * (C.x() - A.x()), d = 2 * (C.y() - A.y());
-    double det = a * d - b * c;
-    if (std::abs(det) < 1e-6) continue;
-
-    double u = ((B.squaredNorm() - A.squaredNorm()) * d - (C.squaredNorm() - A.squaredNorm()) * b) / det;
-    double v = ((C.squaredNorm() - A.squaredNorm()) * a - (B.squaredNorm() - A.squaredNorm()) * c) / det;
-    Eigen::Vector2d center(u, v);
-    double radius = (center - A).norm();
-
-    int inliers = 0;
-    for (const auto& p : points)
-      if (std::abs((p - center).norm() - radius) < thresh)
-        inliers++;
-
-    //ROS_INFO("Circle candidate: center=(%.2f, %.2f), r=%.2f, inliers=%d", center.x(), center.y(), radius, inliers);
-
-
-    if (inliers >= min_inliers) {
-      geometry_msgs::PointStamped ps, ps_out;
-      ps.header.stamp = ros::Time(0);
-      ps.header.frame_id = "base_link";
-      ps.point.x = center.x();
-      ps.point.y = center.y();
-
-      try {
-        tfBuffer_.transform(ps, ps_out, "map", ros::Duration(1.0));
-        Eigen::Vector2d pos(ps_out.point.x, ps_out.point.y);
-        bool known = false;
-        for (const auto& k : known_positions_) {
-          if ((pos - k).norm() < 0.3) {
-            known = true;
-            break;
-          }
-        }
-        if (known) continue;
-
-        known_positions_.push_back(pos);
-        publishLandmark(pos.x(), pos.y(), radius, 0.0, 1);
-        return;
-      } catch (...) {}
-    }
+void LandmarkMapper::saveLandmarks(){
+  fs::path fp(out_path_);
+  if(fp.has_parent_path()){
+    fs::create_directories(fp.parent_path());
   }
+  std::ofstream fout(out_path_, std::ios::out | std::ios::trunc);
+  if(!fout.is_open()){
+    ROS_ERROR("Cannot open file '%s' for writing", out_path_.c_str());
+    return;
+  }
+  YAML::Emitter out;
+  out << YAML::BeginSeq;
+  for(const auto& lm : data_){
+    out << YAML::Flow << YAML::BeginSeq
+        << lm.x << lm.y
+        << YAML::BeginSeq << lm.rho << lm.theta << lm.color << YAML::EndSeq
+        << YAML::EndSeq;
+  }
+  out << YAML::EndSeq;
+
+  fout << out.c_str();
+  fout.close();
+  ROS_INFO("Final save: %zu landmarks to %s",
+           data_.size(), out_path_.c_str());
 }
 
-void LandmarkMapper::publishLandmark(double x, double y, double rho_or_radius, double theta, int type) {
-  if (cs_) {
-    cs_->addLandmark(x, y, rho_or_radius, theta, type);
-    ROS_INFO("Landmark published: (%.2f, %.2f), type=%d", x, y, type);
-  }
-}
-
-int main(int argc, char** argv) {
-  ros::init(argc, argv, "landmark_mapper_node");
-  ros::NodeHandle nh;
-
-  LandmarkMapper mapper(nh);
-  ColorSampler sampler(nh);
-  mapper.setColorSampler(&sampler);  // << WICHTIG
+int main(int argc, char** argv){
+  ros::init(argc, argv, "landmark_mapper");
+  ros::NodeHandle nh, pnh("~");
+  LandmarkMapper lm(nh, pnh);
 
   ros::spin();
+
+  // Nach Ctrl-C: letzte Speicherung
+  lm.saveLandmarks();
   return 0;
 }
-
-

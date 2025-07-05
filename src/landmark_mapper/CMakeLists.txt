@@ -14,61 +14,60 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_geometry_msgs
   cv_bridge
   image_transport
-  roslib
+  message_filters
+  message_generation
 )
-find_package(tf2 REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
-find_package(Eigen3 REQUIRED)
+
+## Find system libs
 find_package(OpenCV REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
+## Messages
+add_message_files(
+  FILES ColorSample.msg
+)
+generate_messages(
+  DEPENDENCIES std_msgs
+)
+
 catkin_package(
-  CATKIN_DEPENDS roscpp sensor_msgs geometry_msgs tf2 tf2_ros tf2_geometry_msgs
+  INCLUDE_DIRS include
+  CATKIN_DEPENDS
+    roscpp
+    sensor_msgs
+    geometry_msgs
+    tf2
+    tf2_ros
+    tf2_geometry_msgs
+    cv_bridge
+    image_transport
+    message_filters
+    message_runtime
+  # DEPENDS nur für catkin-freie Exporte, hier nicht nötig
 )
 
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIRS}
 )
 
-add_library(color_sampler
-  src/color_sampler.cpp
-)
-
-add_dependencies(color_sampler ${catkin_EXPORTED_TARGETS})
-
-add_executable(landmark_mapper_node
-  src/landmark_mapper.cpp
-)
-
-add_dependencies(landmark_mapper_node ${catkin_EXPORTED_TARGETS})
-
-target_link_libraries(landmark_mapper_node
-  color_sampler
-  ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  yaml-cpp
-  tf2
-)
-
-
-add_executable(color_sampler_node
-  src/color_sampler_node.cpp
-)
-
-
+## color_sampler node
+add_executable(color_sampler_node src/color_sampler.cpp)
+add_dependencies(color_sampler_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(color_sampler_node
-  color_sampler
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
-  yaml-cpp
-  tf2
+  ${YAML_CPP_LIBRARIES}
 )
 
-target_link_libraries(color_sampler
+## landmark_mapper node
+add_executable(landmark_mapper src/landmark_mapper.cpp)
+add_dependencies(landmark_mapper ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(landmark_mapper
   ${catkin_LIBRARIES}
-  ${OpenCV_LIBRARIES}
-  yaml-cpp
+  ${YAML_CPP_LIBRARIES}
 )

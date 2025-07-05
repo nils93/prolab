@@ -1,92 +1,184 @@
-// color_sampler.cpp
-
+#include <ros/ros.h>
+#include <sensor_msgs/Image.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/time_synchronizer.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
 #include "landmark_mapper/color_sampler.h"
+#include <filesystem>           // C++17
+namespace fs = std::filesystem;
 
-ColorSampler::ColorSampler() : tf_listener_(tf_buffer_) {}
+ColorSampler::ColorSampler(ros::NodeHandle& nh, ros::NodeHandle& pnh)
+: sub_rgb_(nh, "/camera/image",           1)
+, sub_depth_(nh, "/camera/depth/image_raw",1)
+, sync_(sub_rgb_, sub_depth_, 10)
+{
+  pnh.param<std::string>("output_path", out_path_, "landmarks_raw.yaml");
+  ROS_INFO("ColorSampler: saving raw samples to '%s'", out_path_.c_str());
+  {
+    fs::path fp(out_path_);
+    auto abs_fp = fs::absolute(fp);
+    ROS_INFO("ColorSampler: saving raw samples to '%s' (abs: %s')",
+             out_path_.c_str(), abs_fp.string().c_str());
+  }
+  pub_ = nh.advertise<landmark_mapper::ColorSample>("color_sample", 10);
 
-ColorSampler::ColorSampler(ros::NodeHandle& nh)
-  : tf_listener_(tf_buffer_) {
-  last_image_time_ = ros::Time(0);
-  // Optional: Image-Subscriber hier einrichten
+  sync_.registerCallback(
+    boost::bind(&ColorSampler::callback, this, _1, _2)
+  );
+
+  save_timer_ = nh.createTimer(
+    ros::Duration(5.0),
+    [&](const ros::TimerEvent&){
+      YAML::Emitter out;
+      out << YAML::BeginSeq;
+      for (auto& s : samples_) {
+        out << YAML::Flow << YAML::BeginSeq
+            << s.rho << s.theta << s.color
+            << YAML::EndSeq;
+      }
+      out << YAML::EndSeq;
+      std::ofstream f(out_path_);
+      f << out.c_str();
+      ROS_INFO("Saved %lu samples to %s", samples_.size(), out_path_.c_str());
+    }
+  );
 }
 
-void ColorSampler::imageCallback(const sensor_msgs::ImageConstPtr& msg) {
-  try {
-    cv_img_ = cv_bridge::toCvCopy(msg, "bgr8")->image;
 
-    if (!cv_img_.empty()) {
-      ROS_INFO_ONCE("Erstes Bild empfangen: %d x %d", cv_img_.cols, cv_img_.rows);
+void ColorSampler::callback(const sensor_msgs::ImageConstPtr& rgb,
+                            const sensor_msgs::ImageConstPtr& depth)
+{
+  // 1) Bilder in OpenCV konvertieren
+  cv::Mat img = cv_bridge::toCvCopy(rgb, "bgr8")->image;
+  cv::Mat dep = cv_bridge::toCvCopy(depth, depth->encoding)->image;
+  cv::Mat hsv;
+  cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
+
+  // 2) Farben mit getunten HSV-Bereichen für Hydrant (rot) und Container (grün) + Kegel (orange)
+  struct HSVRange {
+    std::string name;
+    int hue;    // Mittel-Hue
+    int tol;    // +/- Toleranz um hue
+    int s1,s2;  // Sättigung
+    int v1,v2;  // Value
+    bool requireCircle;  // nur kreisförmige Kontur?
+  };
+  std::vector<HSVRange> ranges = {
+    // Hydrant: kräftiges Rot, kreisförmige Kontur nicht zwingend
+    {"red",    0,  15, 100,255, 100,255, /*requireCircle=*/false},
+    // Kegel: orange, kreisförmig
+    {"orange",15,  10, 100,255, 100,255, /*requireCircle=*/false},
+    // Container: dunkelgrün, keine Kreisform nötig
+    {"green", 75,  30,  50,255,  50,255, /*requireCircle=*/false}
+  };
+
+  // 3) Für jede Farbe: Maske, Konturen, Tiefenprojektion
+  for(auto& r : ranges){
+    cv::Mat mask;
+
+    // 3a) Hue-Bereich mit Wrap‐Around
+    int h1 = (r.hue - r.tol + 180) % 180;
+    int h2 = (r.hue + r.tol) % 180;
+    if(h1 < h2){
+      cv::inRange(hsv,
+                  cv::Scalar(h1, r.s1, r.v1),
+                  cv::Scalar(h2, r.s2, r.v2),
+                  mask);
     } else {
-      ROS_WARN("Empfangenes Bild ist leer");
+      // Wrap‐around (z.B. rot)
+      cv::Mat m1, m2;
+      cv::inRange(hsv,
+                  cv::Scalar(0,    r.s1, r.v1),
+                  cv::Scalar(h2,   r.s2, r.v2),
+                  m1);
+      cv::inRange(hsv,
+                  cv::Scalar(h1,   r.s1, r.v1),
+                  cv::Scalar(179,  r.s2, r.v2),
+                  m2);
+      mask = m1 | m2;
     }
-  } catch (...) {
-    ROS_ERROR("cv_bridge Fehler");
-  }
-}
 
-void ColorSampler::addLandmark(double x, double y, double rho, double theta, int type) {
-  std::array<int, 3> rgb = {128, 128, 128};  // default
-  if (sampleColorAt(x, y, rgb)) {
-    landmarks_.emplace_back(x, y, rho, theta, type, rgb);
-    ROS_INFO("Landmark mit Farbe hinzugefügt: (%.2f, %.2f) → [%d,%d,%d]", x, y, rgb[0], rgb[1], rgb[2]);
-  } else {
-    ROS_WARN("Farbstichprobe fehlgeschlagen bei (%.2f, %.2f)", x, y);
-  }
-  last_add_time_ = ros::Time::now();  // MARKIERT: Aktualisiere letzte Änderungszeit
-}
+    // 4) Rauschen entfernen
+    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, cv::Mat(), cv::Point(-1,-1), 2);
 
-bool ColorSampler::sampleColorAt(double x, double y, std::array<int, 3>& rgb_out) {
-  geometry_msgs::PointStamped map_pt, cam_pt;
-  map_pt.header.frame_id = "map";
-  map_pt.header.stamp = ros::Time(0);
-  map_pt.point.x = x;
-  map_pt.point.y = y;
-  map_pt.point.z = 0.0;
+    // 5) Konturen finden und filtern
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    for(auto& c : contours){
+      double area = cv::contourArea(c);
+      if(area < 500) continue;  // zu klein
 
-  try {
-    tf_buffer_.transform(map_pt, cam_pt, "camera_rgb_optical_frame", ros::Duration(1.0));
+      // Kreis-Check
+      cv::Point2f center; float radius;
+      cv::minEnclosingCircle(c, center, radius);
+      double circ = area / (M_PI * radius * radius);
+      bool isCircle = (circ > 0.7);
 
-    ROS_INFO("Transformiert zu Kamera: [%.2f, %.2f, %.2f], Bildgrösse: %d x %d, Alter: %.2f s",
-           cam_pt.point.x, cam_pt.point.y, cam_pt.point.z,
-           cv_img_.cols, cv_img_.rows,
-           (ros::Time::now() - last_image_time_).toSec());
+      // Formabhängige Filterung
+      if(r.requireCircle && !isCircle) continue;
+      // für grün und rot erlauben wir beliebige Formen
 
-    double fx = 554.3827, fy = 554.3827, cx = 320.5, cy = 240.5;
-    double X = cam_pt.point.x, Y = cam_pt.point.y, Z = cam_pt.point.z;
+      // 6) Tiefenwert auslesen
+      float z = dep.at<float>(int(center.y), int(center.x));
+      if(std::isnan(z) || z <= 0) continue;
 
-    if (Z <= 0) return false;
+      // 7) Polarkoordinaten berechnen
+      double theta = atan2(center.x - rgb->width/2.0, 525.0);
+      double rho   = z;
 
-    int u = static_cast<int>(fx * X / Z + cx);
-    int v = static_cast<int>(fy * Y / Z + cy);
+      // 8) Message füllen und publizieren
+      landmark_mapper::ColorSample msg;
+      msg.rho   = rho;
+      msg.theta = theta;
+      msg.color = r.name;
+      pub_.publish(msg);
 
-    if (u >= 0 && u < cv_img_.cols && v >= 0 && v < cv_img_.rows) {
-      cv::Vec3b color = cv_img_.at<cv::Vec3b>(v, u);
-      rgb_out = {color[2], color[1], color[0]};
-      return true;
+      // Roh-Sample speichern
+      samples_.push_back({rho, theta, msg.color});
     }
-  } catch (tf2::TransformException& ex) {
-    ROS_WARN("TF error: %s", ex.what());
   }
-  return false;
 }
 
-void ColorSampler::saveToYAML(const std::string& path) {
-  std::string out_path = path.empty()
-      ? ros::package::getPath("landmark_mapper") + "/landmark_map_colored.yaml"
-      : path;
 
+
+void ColorSampler::saveSamples(){
+  // 1) Verzeichnis anlegen, falls nötig
+  fs::path fp(out_path_);
+  if(fp.has_parent_path()){
+    fs::create_directories(fp.parent_path());
+  }
+  // 2) Datei öffnen (trunc = neu anlegen)
+  std::ofstream fout(out_path_, std::ios::out | std::ios::trunc);
+  if(!fout.is_open()){
+    ROS_ERROR("Cannot open file '%s' for writing", out_path_.c_str());
+    return;
+  }
+  // 3) YAML schreiben
   YAML::Emitter out;
-  out << YAML::BeginMap << YAML::Key << "landmarks" << YAML::Value << YAML::BeginSeq;
-  for (const auto& [x, y, rho, theta, type, rgb] : landmarks_) {
-    out << YAML::Flow << YAML::BeginSeq << x << y
-        << YAML::Flow << YAML::BeginSeq << rho << theta << type << YAML::Flow << YAML::BeginSeq << rgb[0] << rgb[1] << rgb[2] << YAML::EndSeq
+  out << YAML::BeginSeq;
+  for(const auto& s : samples_){
+    out << YAML::Flow << YAML::BeginSeq
+        << s.rho << s.theta << s.color
         << YAML::EndSeq;
   }
-  out << YAML::EndSeq << YAML::EndMap;
+  out << YAML::EndSeq;
 
-  std::ofstream fout(out_path);
   fout << out.c_str();
-  ROS_INFO("Landmarks nach %s geschrieben", out_path.c_str());
+  fout.close();
+  ROS_INFO("Final save: %lu samples to %s",
+           samples_.size(), out_path_.c_str());
 }
 
 
+// ----- main direkt hier -----
+int main(int argc, char** argv){
+  ros::init(argc, argv, "color_sampler_node");
+  ros::NodeHandle nh;        // global für Topics
+  ros::NodeHandle pnh("~");  // privat für Params
+  ColorSampler sampler(nh, pnh);
+  ros::spin();
+  return 0;
+}
