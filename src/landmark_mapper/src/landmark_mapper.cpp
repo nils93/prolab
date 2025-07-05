@@ -27,7 +27,8 @@ void LandmarkMapper::sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg)
   ROS_INFO_ONCE("LandmarkMapper: Received first color sample.");
   geometry_msgs::TransformStamped tfst;
   try{
-    tfst = tf_buf_.lookupTransform("map","base_link",ros::Time(0),ros::Duration(0.1));
+    // *** WICHTIGE ÄNDERUNG: Zeitstempel der Nachricht verwenden! ***
+    tfst = tf_buf_.lookupTransform("map","base_link", msg->header.stamp, ros::Duration(0.2));
   } catch(tf2::TransformException &ex){
     ROS_WARN("Could not get transform from map to base_link: %s", ex.what());
     return;
@@ -46,18 +47,22 @@ void LandmarkMapper::sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg)
   // Landmark-Signatur ist die Kombination aus Farbe und Tag-ID
   for (auto& lm : data_) {
     if (lm.color == msg->color && lm.tag_id == msg->tag_id) {
-      // Landmark mit derselben Signatur gefunden, Position aktualisieren
-      lm.x = x;
-      lm.y = y;
-      lm.rho = msg->rho;
-      lm.theta = msg->theta;
-      ROS_DEBUG("Updated landmark [\"%s\", %d] at (%f, %f)", lm.color.c_str(), lm.tag_id, x, y);
+      // *** WICHTIGE ÄNDERUNG: Gleitender Durchschnittsfilter ***
+      double w_new = 1.0 / (lm.detection_count + 1.0);
+      double w_old = 1.0 - w_new;
+      
+      lm.x = w_old * lm.x + w_new * x;
+      lm.y = w_old * lm.y + w_new * y;
+      lm.detection_count++;
+
+      ROS_DEBUG("Updated landmark [\"%s\", %d] to (%f, %f) after %d detections", 
+                lm.color.c_str(), lm.tag_id, lm.x, lm.y, lm.detection_count);
       return; // Fertig
     }
   }
 
   // Kein passendes Landmark gefunden, neues hinzufügen
-  data_.push_back({x, y, msg->rho, msg->theta, msg->color, msg->tag_id});
+  data_.push_back({x, y, msg->rho, msg->theta, msg->color, msg->tag_id, 1}); // Zähler mit 1 initialisieren
   ROS_INFO("Added new landmark [\"%s\", %d] at (%f, %f)", msg->color.c_str(), msg->tag_id, x, y);
 }
 

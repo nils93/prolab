@@ -56,7 +56,7 @@
       <odometrySource>world</odometrySource>
       <publishOdomTF>true</publishOdomTF>
       <robotBaseFrame>base_footprint</robotBaseFrame>
-      <publishWheelTF>false</publishWheelTF>
+      <publishWheelTF>true</publishWheelTF>
       <publishTf>true</publishTf>
       <publishWheelJointState>true</publishWheelJointState>
       <legacyMode>false</legacyMode>
@@ -134,62 +134,50 @@
 
   <!--link : https://www.raspberrypi.org/documentation/hardware/camera/-->
   <gazebo reference="camera_rgb_frame">
-    <sensor type="camera" name="Pi Camera">
+    <sensor type="depth" name="camera">
       <always_on>true</always_on>
-      <visualize>$(arg camera_visual)</visualize>
-      <camera>
-          <horizontal_fov>1.085595</horizontal_fov>
-          <image>
-              <width>320</width>
-              <height>240</height>
-              <format>R8G8B8</format>
-          </image>
-          <clip>
-              <near>0.03</near>
-              <far>100</far>
-          </clip>
-      </camera>
-      <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
-        <alwaysOn>true</alwaysOn>
-        <updateRate>30.0</updateRate>
-        <cameraName>camera</cameraName>
-        <frameName>camera_rgb_optical_frame</frameName>
-        <imageTopicName>image</imageTopicName>
-        <cameraInfoTopicName>camera_info</cameraInfoTopicName>
-        <hackBaseline>0.07</hackBaseline>
-        <distortionK1>0.0</distortionK1>
-        <distortionK2>0.0</distortionK2>
-        <distortionK3>0.0</distortionK3>
-        <distortionT1>0.0</distortionT1>
-        <distortionT2>0.0</distortionT2>
-      </plugin>
-    </sensor>
-  </gazebo>
-
-  <gazebo reference="camera_rgb_frame">
-    <sensor type="depth" name="depth_camera">
-      <always_on>true</always_on>
-      <visualize>false</visualize>
+      <update_rate>30.0</update_rate>
       <camera>
         <horizontal_fov>1.085595</horizontal_fov>
         <image>
           <width>320</width>
           <height>240</height>
-          <format>Z16</format>
+          <format>R8G8B8</format>
         </image>
         <clip>
           <near>0.03</near>
-          <far>10.0</far>
+          <far>100</far>
         </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
       </camera>
-      <plugin name="depth_controller" filename="libgazebo_ros_openni_kinect.so">
-        <depthTopicName>camera/depth/image_raw</depthTopicName>
-        <cameraName>camera</cameraName>
-        <frameName>camera_depth_optical_frame</frameName>
+      <plugin name="camera_controller" filename="libgazebo_ros_openni_kinect.so">
+        <baseline>0.2</baseline>
+        <alwaysOn>true</alwaysOn>
         <updateRate>30.0</updateRate>
+        <cameraName>camera</cameraName>
+        <imageTopicName>image</imageTopicName>
+        <depthImageTopicName>depth/image_raw</depthImageTopicName>
+        <pointCloudTopicName>depth/points</pointCloudTopicName>
+        <cameraInfoTopicName>camera_info</cameraInfoTopicName>
+        <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+        <frameName>camera_rgb_optical_frame</frameName>
+        <pointCloudCutoff>0.03</pointCloudCutoff>
+            <distortionK1>0.0</distortionK1>
+            <distortionK2>0.0</distortionK2>
+            <distortionK3>0.0</distortionK3>
+            <distortionT1>0.0</distortionT1>
+            <distortionT2>0.0</distortionT2>
+        <CxPrime>0</CxPrime>
+        <Cx>0</Cx>
+        <Cy>0</Cy>
+        <focalLength>0</focalLength>
+        <hackBaseline>0</hackBaseline>
       </plugin>
     </sensor>
   </gazebo>
-
 
 </robot>

@@ -14,6 +14,7 @@ struct Landmark {
   double x,y, rho, theta;
   std::string color;
   int32_t tag_id;
+  int detection_count; // Zählt, wie oft die Landmarke gesehen wurde
 };
 
 class LandmarkMapper {

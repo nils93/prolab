@@ -137,40 +137,60 @@ void ColorSampler::callback(const sensor_msgs::ImageConstPtr& rgb,
       cv::Point2f color_center(M.m10 / M.m00, M.m01 / M.m00);
 
       // 7) Check for a matching AprilTag (ID must match the color's expected ID)
-      bool tag_found = false;
+      const RecentTag* matched_tag = nullptr; // Use a pointer to store the matched tag
       for(const auto& tag : recent_tags_){
         // *** CRUCIAL CHECK: ID must match! ***
         if(tag.id != ctt.expected_tag_id) continue;
 
-        // Project 3D tag position to 2D image coordinates
+        // Project 3D tag position to 2D image coordinates to check for proximity
         cv::Point3d tag_pos_3d(tag.position.x, tag.position.y, tag.position.z);
         cv::Point2d tag_pos_2d = cam_model_.project3dToPixel(tag_pos_3d);
 
         // Check if the projected tag center is close to the color blob center
-        if(cv::norm(color_center - cv::Point2f(tag_pos_2d)) < 20.0) { // 20 pixel tolerance
-          tag_found = true;
+        if(cv::norm(color_center - cv::Point2f(tag_pos_2d)) < 25.0) { // 25 pixel tolerance
+          matched_tag = &tag; // Store a pointer to the matched tag
           break; // Found a match, no need to check other tags for this color blob
         }
       }
 
       // 8) If both color and tag match, create and publish the sample
-      if(tag_found){
-        float z = dep.at<float>(int(color_center.y), int(color_center.x));
-        if (z > 0.1 && std::isfinite(z)) {
-          double theta = atan2((img.cols/2.0 - color_center.x), z);
-          double rho = z;
+      if(matched_tag){
+        // --- START OF FINAL, PRECISE CALCULATION ---
 
-          landmark_mapper::ColorSample sample_msg;
-          sample_msg.header.stamp = rgb->header.stamp;
-          sample_msg.header.frame_id = "base_link";
-          sample_msg.rho = rho;
-          sample_msg.theta = theta;
-          sample_msg.color = ctt.name;
-          sample_msg.tag_id = ctt.expected_tag_id;
+        // a) Get the precise 3D position directly from the AprilTag detection.
+        //    This position is already in the camera's coordinate frame.
+        cv::Point3d point_in_cam_frame(
+            matched_tag->position.x,
+            matched_tag->position.y,
+            matched_tag->position.z
+        );
 
-          pub_.publish(sample_msg);
-          samples_.push_back({rho, theta, ctt.name, ctt.expected_tag_id});
-        }
+        // b) Transform from camera frame to the robot's base_link frame.
+        //    This assumes a standard camera orientation where Z is forward, X is right.
+        //    Robot's X is forward, Y is left.
+        //    Therefore: robot_x = camera_z, robot_y = -camera_x
+        double x_base = point_in_cam_frame.z;
+        double y_base = -point_in_cam_frame.x;
+
+        // c) Calculate the correct polar coordinates (rho, theta) in the base_link frame
+        double rho   = std::sqrt(x_base * x_base + y_base * y_base);
+        double theta = std::atan2(y_base, x_base);
+        
+        // --- END OF FINAL, PRECISE CALCULATION ---
+
+        landmark_mapper::ColorSample sample_msg;
+        sample_msg.header.stamp = rgb->header.stamp;
+        sample_msg.header.frame_id = "base_link";
+        sample_msg.rho = rho;
+        sample_msg.theta = theta;
+        sample_msg.color = ctt.name;
+        sample_msg.tag_id = ctt.expected_tag_id;
+
+        pub_.publish(sample_msg);
+        samples_.push_back({rho, theta, ctt.name, ctt.expected_tag_id});
+        
+        // Since we found a match for this color, we can stop searching through contours
+        break; 
       }
     }
   }
