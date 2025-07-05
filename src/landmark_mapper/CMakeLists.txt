@@ -7,15 +7,19 @@ add_compile_options(-std=c++17)
 ## Find catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  rospy
   sensor_msgs
+  std_msgs
   geometry_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs
   cv_bridge
   image_transport
+  image_geometry
   message_filters
   message_generation
+  roslib
 )
 
 ## Find system libs
@@ -35,13 +39,17 @@ catkin_package(
   INCLUDE_DIRS include
   CATKIN_DEPENDS
     roscpp
+    rospy
+    roslib
     sensor_msgs
+    std_msgs
     geometry_msgs
     tf2
     tf2_ros
     tf2_geometry_msgs
     cv_bridge
     image_transport
+    image_geometry
     message_filters
     message_runtime
   # DEPENDS nur für catkin-freie Exporte, hier nicht nötig
@@ -65,9 +73,9 @@ target_link_libraries(color_sampler_node
 )
 
 ## landmark_mapper node
-add_executable(landmark_mapper src/landmark_mapper.cpp)
-add_dependencies(landmark_mapper ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(landmark_mapper
+add_executable(landmark_mapper_node src/landmark_mapper.cpp)
+add_dependencies(landmark_mapper_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(landmark_mapper_node
   ${catkin_LIBRARIES}
   ${YAML_CPP_LIBRARIES}
 )

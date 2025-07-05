@@ -5,6 +5,7 @@
 #include <fstream>
 #include "landmark_mapper/landmark_mapper.h"
 #include <filesystem>
+#include <ros/package.h> // Hinzufügen für ros::package::getPath
 namespace fs = std::filesystem;
 
 LandmarkMapper::LandmarkMapper(ros::NodeHandle& nh, ros::NodeHandle& pnh)
@@ -12,7 +13,10 @@ LandmarkMapper::LandmarkMapper(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
   // Parameter aus privatem Handle
   pnh.param<std::string>("output_path", out_path_, "mapped_landmarks.yaml");
-  ROS_INFO("LandmarkMapper: saving landmarks to '%s'", out_path_.c_str());
+  
+  ROS_INFO("LandmarkMapper: output path parameter is '%s'", out_path_.c_str());
+  ROS_INFO("LandmarkMapper: full output path is '%s'", fs::absolute(out_path_).c_str());
+
   // Subscriber auf globales Topic
   sub_   = nh.subscribe("color_sample", 10, &LandmarkMapper::sampleCb, this);
   // Timer zum periodischen Speichern
@@ -20,10 +24,14 @@ LandmarkMapper::LandmarkMapper(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 }
 
 void LandmarkMapper::sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg){
+  ROS_INFO_ONCE("LandmarkMapper: Received first color sample.");
   geometry_msgs::TransformStamped tfst;
   try{
     tfst = tf_buf_.lookupTransform("map","base_link",ros::Time(0),ros::Duration(0.1));
-  } catch(...){ return; }
+  } catch(tf2::TransformException &ex){
+    ROS_WARN("Could not get transform from map to base_link: %s", ex.what());
+    return;
+  }
   double xr = tfst.transform.translation.x;
   double yr = tfst.transform.translation.y;
   tf2::Quaternion q;
@@ -35,27 +43,25 @@ void LandmarkMapper::sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg)
   double x = xr + msg->rho * cos(yaw + msg->theta);
   double y = yr + msg->rho * sin(yaw + msg->theta);
 
-  for(auto& lm:data_){
-    if(fabs(lm.x-x)<0.1 && fabs(lm.y-y)<0.1 && lm.color==msg->color) return;
+  // Landmark-Signatur ist die Kombination aus Farbe und Tag-ID
+  for (auto& lm : data_) {
+    if (lm.color == msg->color && lm.tag_id == msg->tag_id) {
+      // Landmark mit derselben Signatur gefunden, Position aktualisieren
+      lm.x = x;
+      lm.y = y;
+      lm.rho = msg->rho;
+      lm.theta = msg->theta;
+      ROS_DEBUG("Updated landmark [\"%s\", %d] at (%f, %f)", lm.color.c_str(), lm.tag_id, x, y);
+      return; // Fertig
+    }
   }
-  data_.push_back({x,y,msg->rho,msg->theta,msg->color});
+
+  // Kein passendes Landmark gefunden, neues hinzufügen
+  data_.push_back({x, y, msg->rho, msg->theta, msg->color, msg->tag_id});
+  ROS_INFO("Added new landmark [\"%s\", %d] at (%f, %f)", msg->color.c_str(), msg->tag_id, x, y);
 }
 
-void LandmarkMapper::saveCb(const ros::TimerEvent&){
-  YAML::Emitter out;
-  out<<YAML::BeginSeq;
-  for(auto& lm:data_){
-    out<<YAML::Flow<<YAML::BeginSeq
-       <<lm.x<<lm.y<<lm.rho<<lm.theta<<lm.color
-       <<YAML::EndSeq;
-  }
-  out<<YAML::EndSeq;
-  std::ofstream f(out_path_);
-  f<<out.c_str();
-  ROS_INFO("Wrote %lu landmarks", data_.size());
-}
-
-void LandmarkMapper::saveLandmarks(){
+void LandmarkMapper::writeFile(bool is_final){
   fs::path fp(out_path_);
   if(fp.has_parent_path()){
     fs::create_directories(fp.parent_path());
@@ -70,15 +76,27 @@ void LandmarkMapper::saveLandmarks(){
   for(const auto& lm : data_){
     out << YAML::Flow << YAML::BeginSeq
         << lm.x << lm.y
-        << YAML::BeginSeq << lm.rho << lm.theta << lm.color << YAML::EndSeq
+        << YAML::BeginSeq << lm.color << lm.tag_id << YAML::EndSeq
         << YAML::EndSeq;
   }
   out << YAML::EndSeq;
 
   fout << out.c_str();
   fout.close();
-  ROS_INFO("Final save: %zu landmarks to %s",
+  if(is_final){
+    ROS_INFO("Final save: %zu landmarks to %s",
            data_.size(), out_path_.c_str());
+  } else {
+    ROS_INFO("Wrote %lu landmarks to %s", data_.size(), out_path_.c_str());
+  }
+}
+
+void LandmarkMapper::saveCb(const ros::TimerEvent&){
+  writeFile(false);
+}
+
+void LandmarkMapper::saveLandmarks(){
+  writeFile(true);
 }
 
 int main(int argc, char** argv){

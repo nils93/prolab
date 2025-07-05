@@ -5,9 +5,12 @@
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <yaml-cpp/yaml.h>
+#include <ros/package.h>
 #include <fstream>
 #include "landmark_mapper/color_sampler.h"
 #include <filesystem>           // C++17
+#include <apriltag_ros/AprilTagDetectionArray.h>
+
 namespace fs = std::filesystem;
 
 ColorSampler::ColorSampler(ros::NodeHandle& nh, ros::NodeHandle& pnh)
@@ -16,14 +19,25 @@ ColorSampler::ColorSampler(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 , sync_(sub_rgb_, sub_depth_, 10)
 {
   pnh.param<std::string>("output_path", out_path_, "landmarks_raw.yaml");
-  ROS_INFO("ColorSampler: saving raw samples to '%s'", out_path_.c_str());
-  {
-    fs::path fp(out_path_);
-    auto abs_fp = fs::absolute(fp);
-    ROS_INFO("ColorSampler: saving raw samples to '%s' (abs: %s')",
-             out_path_.c_str(), abs_fp.string().c_str());
-  }
+  ROS_INFO("ColorSampler: output path parameter is '%s'", out_path_.c_str());
+  ROS_INFO("ColorSampler: full output path is '%s'", fs::absolute(out_path_).c_str());
+
   pub_ = nh.advertise<landmark_mapper::ColorSample>("color_sample", 10);
+
+  // Define the colors and their corresponding tag IDs to detect
+  // HSV values: H (0-179), S (0-255), V (0-255)
+  colors_to_detect_ = {
+    {"green",  0, 60, 15, 70, 255, 70, 255},
+    {"red",    1, 0,  10, 70, 255, 70, 255}, // Red wraps around 0/180
+    {"blue",   2, 120,15, 70, 255, 70, 255},
+    {"orange", 3, 15, 10, 100,255, 100,255} // Orange is around H=15-25
+  };
+
+  // Subscribe to camera info to get calibration
+  sub_cam_info_ = nh.subscribe("/camera/camera_info", 1, &ColorSampler::cameraInfoCallback, this);
+
+  // Subscribe to AprilTag detections
+  sub_tags_ = nh.subscribe("/tag_detections", 10, &ColorSampler::tagCallback, this);
 
   sync_.registerCallback(
     boost::bind(&ColorSampler::callback, this, _1, _2)
@@ -36,7 +50,8 @@ ColorSampler::ColorSampler(ros::NodeHandle& nh, ros::NodeHandle& pnh)
       out << YAML::BeginSeq;
       for (auto& s : samples_) {
         out << YAML::Flow << YAML::BeginSeq
-            << s.rho << s.theta << s.color
+            << s.rho << s.theta
+            << YAML::Flow << YAML::BeginSeq << s.color << s.tag_id << YAML::EndSeq
             << YAML::EndSeq;
       }
       out << YAML::EndSeq;
@@ -47,97 +62,116 @@ ColorSampler::ColorSampler(ros::NodeHandle& nh, ros::NodeHandle& pnh)
   );
 }
 
+void ColorSampler::cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& msg){
+  if(!cam_model_.initialized()){
+    cam_model_.fromCameraInfo(msg);
+    ROS_INFO("ColorSampler: Camera model initialized.");
+    sub_cam_info_.shutdown(); // We only need it once
+  }
+}
+
+void ColorSampler::tagCallback(const apriltag_ros::AprilTagDetectionArray::ConstPtr& msg)
+{
+  // 1. Clear old tags
+  ros::Time now = ros::Time::now();
+  recent_tags_.erase(
+    std::remove_if(recent_tags_.begin(), recent_tags_.end(),
+                   [&](const RecentTag& t){ return (now - t.timestamp).toSec() > 1.0; }),
+    recent_tags_.end());
+
+  // 2. Add new tags
+  for(const auto& detection : msg->detections)
+  {
+    recent_tags_.push_back({
+      detection.id[0],
+      detection.pose.pose.pose.position,
+      detection.pose.header.stamp
+    });
+  }
+}
+
 
 void ColorSampler::callback(const sensor_msgs::ImageConstPtr& rgb,
                             const sensor_msgs::ImageConstPtr& depth)
 {
-  // 1) Bilder in OpenCV konvertieren
+  // Must have camera model to proceed
+  if(!cam_model_.initialized()){
+    return;
+  }
+
+  // 1) Convert images to OpenCV
   cv::Mat img = cv_bridge::toCvCopy(rgb, "bgr8")->image;
   cv::Mat dep = cv_bridge::toCvCopy(depth, depth->encoding)->image;
   cv::Mat hsv;
   cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
 
-  // 2) Farben mit getunten HSV-Bereichen für Hydrant (rot) und Container (grün) + Kegel (orange)
-  struct HSVRange {
-    std::string name;
-    int hue;    // Mittel-Hue
-    int tol;    // +/- Toleranz um hue
-    int s1,s2;  // Sättigung
-    int v1,v2;  // Value
-    bool requireCircle;  // nur kreisförmige Kontur?
-  };
-  std::vector<HSVRange> ranges = {
-    // Hydrant: kräftiges Rot, kreisförmige Kontur nicht zwingend
-    {"red",    0,  15, 100,255, 100,255, /*requireCircle=*/false},
-    // Kegel: orange, kreisförmig
-    {"orange",15,  10, 100,255, 100,255, /*requireCircle=*/false},
-    // Container: dunkelgrün, keine Kreisform nötig
-    {"green", 75,  30,  50,255,  50,255, /*requireCircle=*/false}
-  };
-
-  // 3) Für jede Farbe: Maske, Konturen, Tiefenprojektion
-  for(auto& r : ranges){
+  // 2) Iterate through all colors we want to detect
+  for (const auto& ctt : colors_to_detect_) {
+    // 3) Create mask for the current color
     cv::Mat mask;
-
-    // 3a) Hue-Bereich mit Wrap‐Around
-    int h1 = (r.hue - r.tol + 180) % 180;
-    int h2 = (r.hue + r.tol) % 180;
-    if(h1 < h2){
-      cv::inRange(hsv,
-                  cv::Scalar(h1, r.s1, r.v1),
-                  cv::Scalar(h2, r.s2, r.v2),
-                  mask);
+    if (ctt.name == "red") {
+      // Special handling for red (wraps around H=0)
+      cv::Mat mask1, mask2;
+      cv::inRange(hsv, cv::Scalar(0, ctt.s_min, ctt.v_min), cv::Scalar(ctt.h_tol, ctt.s_max, ctt.v_max), mask1);
+      cv::inRange(hsv, cv::Scalar(180 - ctt.h_tol, ctt.s_min, ctt.v_min), cv::Scalar(179, ctt.s_max, ctt.v_max), mask2);
+      mask = mask1 | mask2;
     } else {
-      // Wrap‐around (z.B. rot)
-      cv::Mat m1, m2;
-      cv::inRange(hsv,
-                  cv::Scalar(0,    r.s1, r.v1),
-                  cv::Scalar(h2,   r.s2, r.v2),
-                  m1);
-      cv::inRange(hsv,
-                  cv::Scalar(h1,   r.s1, r.v1),
-                  cv::Scalar(179,  r.s2, r.v2),
-                  m2);
-      mask = m1 | m2;
+      int h1 = (ctt.h_mean - ctt.h_tol + 180) % 180;
+      int h2 = (ctt.h_mean + ctt.h_tol) % 180;
+      cv::inRange(hsv, cv::Scalar(h1, ctt.s_min, ctt.v_min), cv::Scalar(h2, ctt.s_max, ctt.v_max), mask);
     }
 
-    // 4) Rauschen entfernen
+    // 4) Clean up mask
     cv::morphologyEx(mask, mask, cv::MORPH_OPEN, cv::Mat(), cv::Point(-1,-1), 2);
 
-    // 5) Konturen finden und filtern
+    // 5) Find color contours
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
     for(auto& c : contours){
       double area = cv::contourArea(c);
-      if(area < 500) continue;  // zu klein
+      if(area < 500) continue;  // Too small
 
-      // Kreis-Check
-      cv::Point2f center; float radius;
-      cv::minEnclosingCircle(c, center, radius);
-      double circ = area / (M_PI * radius * radius);
-      bool isCircle = (circ > 0.7);
+      // 6) Find the center of the colored region
+      cv::Moments M = cv::moments(c);
+      cv::Point2f color_center(M.m10 / M.m00, M.m01 / M.m00);
 
-      // Formabhängige Filterung
-      if(r.requireCircle && !isCircle) continue;
-      // für grün und rot erlauben wir beliebige Formen
+      // 7) Check for a matching AprilTag (ID must match the color's expected ID)
+      bool tag_found = false;
+      for(const auto& tag : recent_tags_){
+        // *** CRUCIAL CHECK: ID must match! ***
+        if(tag.id != ctt.expected_tag_id) continue;
 
-      // 6) Tiefenwert auslesen
-      float z = dep.at<float>(int(center.y), int(center.x));
-      if(std::isnan(z) || z <= 0) continue;
+        // Project 3D tag position to 2D image coordinates
+        cv::Point3d tag_pos_3d(tag.position.x, tag.position.y, tag.position.z);
+        cv::Point2d tag_pos_2d = cam_model_.project3dToPixel(tag_pos_3d);
 
-      // 7) Polarkoordinaten berechnen
-      double theta = atan2(center.x - rgb->width/2.0, 525.0);
-      double rho   = z;
+        // Check if the projected tag center is close to the color blob center
+        if(cv::norm(color_center - cv::Point2f(tag_pos_2d)) < 20.0) { // 20 pixel tolerance
+          tag_found = true;
+          break; // Found a match, no need to check other tags for this color blob
+        }
+      }
 
-      // 8) Message füllen und publizieren
-      landmark_mapper::ColorSample msg;
-      msg.rho   = rho;
-      msg.theta = theta;
-      msg.color = r.name;
-      pub_.publish(msg);
+      // 8) If both color and tag match, create and publish the sample
+      if(tag_found){
+        float z = dep.at<float>(int(color_center.y), int(color_center.x));
+        if (z > 0.1 && std::isfinite(z)) {
+          double theta = atan2((img.cols/2.0 - color_center.x), z);
+          double rho = z;
 
-      // Roh-Sample speichern
-      samples_.push_back({rho, theta, msg.color});
+          landmark_mapper::ColorSample sample_msg;
+          sample_msg.header.stamp = rgb->header.stamp;
+          sample_msg.header.frame_id = "base_link";
+          sample_msg.rho = rho;
+          sample_msg.theta = theta;
+          sample_msg.color = ctt.name;
+          sample_msg.tag_id = ctt.expected_tag_id;
+
+          pub_.publish(sample_msg);
+          samples_.push_back({rho, theta, ctt.name, ctt.expected_tag_id});
+        }
+      }
     }
   }
 }
@@ -161,7 +195,8 @@ void ColorSampler::saveSamples(){
   out << YAML::BeginSeq;
   for(const auto& s : samples_){
     out << YAML::Flow << YAML::BeginSeq
-        << s.rho << s.theta << s.color
+        << s.rho << s.theta
+        << YAML::Flow << YAML::BeginSeq << s.color << s.tag_id << YAML::EndSeq
         << YAML::EndSeq;
   }
   out << YAML::EndSeq;
@@ -174,11 +209,14 @@ void ColorSampler::saveSamples(){
 
 
 // ----- main direkt hier -----
+
 int main(int argc, char** argv){
   ros::init(argc, argv, "color_sampler_node");
   ros::NodeHandle nh;        // global für Topics
   ros::NodeHandle pnh("~");  // privat für Params
   ColorSampler sampler(nh, pnh);
   ros::spin();
+  // Nach Ctrl-C: letzte Speicherung
+  sampler.saveSamples();
   return 0;
 }

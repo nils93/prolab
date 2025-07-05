@@ -13,6 +13,7 @@
 struct Landmark {
   double x,y, rho, theta;
   std::string color;
+  int32_t tag_id;
 };
 
 class LandmarkMapper {
@@ -22,6 +23,7 @@ public:
 private:
   void sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg);
   void saveCb(const ros::TimerEvent&);
+  void writeFile(bool is_final);
   
   ros::Subscriber    sub_;
   ros::Timer         timer_;
