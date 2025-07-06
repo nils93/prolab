@@ -1,26 +1,23 @@
 #include "ekf_wlm/ekf_wlm.h"
-#include <yaml-cpp/yaml.h>
-#include <fstream>
 
 EKFLocalizationWLM::EKFLocalizationWLM(ros::NodeHandle& nh, ros::NodeHandle& pnh) {
-    // Load landmarks from YAML file
+    //Landmarks aus YAML-Datei laden
     std::string landmark_path;
     pnh.param<std::string>("landmark_map_path", landmark_path, "");
     
     if (!loadLandmarks(landmark_path)) {
-        ROS_ERROR("Failed to load landmarks from %s", landmark_path.c_str());
+        ROS_ERROR("Landmarks konnten nicht geladen werden: %s", landmark_path.c_str());
         ros::shutdown();
         return;
     }
 
-    // Initialize EKF
+    // Initialisiere EKF
     mu_.setZero();
     Sigma_ = Eigen::Matrix3d::Identity() * 0.1;
     R_ = Eigen::Matrix3d::Identity() * 1e-3;
     Q_landmark_ = Eigen::Matrix2d::Identity() * 1e-4;
     last_time_ = ros::Time::now();
 
-    // ROS Setup
     odom_sub_ = nh.subscribe("/odom", 10, &EKFLocalizationWLM::odomCallback, this);
     landmark_sub_ = nh.subscribe("/color_sample", 10, &EKFLocalizationWLM::landmarkCallback, this);
     pose_pub_ = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("ekf_pose_wlm", 10);
@@ -44,7 +41,7 @@ bool EKFLocalizationWLM::loadLandmarks(const std::string& path) {
             }
             
             landmark_map_.push_back(lm);
-            ROS_INFO("Loaded landmark: [%.2f, %.2f, %s, %d]", 
+            ROS_INFO("Geladene Landmarks: [%.2f, %.2f, %s, %d]", 
                     lm.x, lm.y, lm.color.c_str(), lm.id);
         }
         return true;
@@ -60,15 +57,14 @@ void EKFLocalizationWLM::odomCallback(const nav_msgs::Odometry::ConstPtr& odom) 
 }
 
 void EKFLocalizationWLM::landmarkCallback(const landmark_mapper::ColorSample::ConstPtr& msg) {
-    // Find matching landmark
+    // Finde das Landmark in der Karte
     for (const auto& lm : landmark_map_) {
         if (lm.color == msg->color && lm.id == msg->tag_id) {
             updateWithLandmark(msg, lm);
-            // publishPose(); // Don't publish here, odom callback will do it
             return;
         }
     }
-    ROS_WARN("Landmark [%s, %d] not found in map!", msg->color.c_str(), msg->tag_id);
+    ROS_WARN("Landmark [%s, %d] nicht in der map gefunden!", msg->color.c_str(), msg->tag_id);
 }
 
 void EKFLocalizationWLM::predict(const nav_msgs::Odometry::ConstPtr& odom) {
@@ -100,7 +96,7 @@ void EKFLocalizationWLM::predict(const nav_msgs::Odometry::ConstPtr& odom) {
         G(1,2) = (v/w) * (sin(theta + w*dt) - sin(theta));
     }
 
-    // Covariance update
+    // Kovarianz update
     Sigma_ = G * Sigma_ * G.transpose() + R_;
 }
 
@@ -145,7 +141,7 @@ void EKFLocalizationWLM::publishPose() {
     q.setRPY(0, 0, mu_(2));
     out.pose.pose.orientation = tf2::toMsg(q);
 
-    // Fill covariance
+    // 6×6-Covariance (nur obere 3×3 füllen)
     out.pose.covariance[0] = Sigma_(0,0);  // x-x
     out.pose.covariance[1] = Sigma_(0,1);  // x-y
     out.pose.covariance[5] = Sigma_(0,2);  // x-theta
@@ -158,7 +154,7 @@ void EKFLocalizationWLM::publishPose() {
 
     pose_pub_.publish(out);
 
-    // Also publish the transform
+    // publksih die Transformation
     geometry_msgs::TransformStamped transformStamped;
     transformStamped.header.stamp = last_time_;
     transformStamped.header.frame_id = "map";

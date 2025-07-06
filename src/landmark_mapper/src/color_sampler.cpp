@@ -1,16 +1,5 @@
-#include <ros/ros.h>
-#include <sensor_msgs/Image.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/time_synchronizer.h>
-#include <cv_bridge/cv_bridge.h>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <yaml-cpp/yaml.h>
-#include <ros/package.h>
-#include <fstream>
 #include "landmark_mapper/color_sampler.h"
-#include <filesystem>           // C++17
-#include <apriltag_ros/AprilTagDetectionArray.h>
-
+  
 namespace fs = std::filesystem;
 
 ColorSampler::ColorSampler(ros::NodeHandle& nh, ros::NodeHandle& pnh)
@@ -66,20 +55,20 @@ void ColorSampler::cameraInfoCallback(const sensor_msgs::CameraInfoConstPtr& msg
   if(!cam_model_.initialized()){
     cam_model_.fromCameraInfo(msg);
     ROS_INFO("ColorSampler: Camera model initialized.");
-    sub_cam_info_.shutdown(); // We only need it once
+    sub_cam_info_.shutdown();
   }
 }
 
 void ColorSampler::tagCallback(const apriltag_ros::AprilTagDetectionArray::ConstPtr& msg)
 {
-  // 1. Clear old tags
+  // 1. Lösche alte tags, die älter als 1 Sekunde sind
   ros::Time now = ros::Time::now();
   recent_tags_.erase(
     std::remove_if(recent_tags_.begin(), recent_tags_.end(),
                    [&](const RecentTag& t){ return (now - t.timestamp).toSec() > 1.0; }),
     recent_tags_.end());
 
-  // 2. Add new tags
+  // 2. Füge neue Tags hinzu
   for(const auto& detection : msg->detections)
   {
     recent_tags_.push_back({
@@ -94,23 +83,20 @@ void ColorSampler::tagCallback(const apriltag_ros::AprilTagDetectionArray::Const
 void ColorSampler::callback(const sensor_msgs::ImageConstPtr& rgb,
                             const sensor_msgs::ImageConstPtr& depth)
 {
-  // Must have camera model to proceed
   if(!cam_model_.initialized()){
     return;
   }
 
-  // 1) Convert images to OpenCV
+  // 1) Konvertiere Bilder zu OpenCV
   cv::Mat img = cv_bridge::toCvCopy(rgb, "bgr8")->image;
   cv::Mat dep = cv_bridge::toCvCopy(depth, depth->encoding)->image;
   cv::Mat hsv;
   cv::cvtColor(img, hsv, cv::COLOR_BGR2HSV);
 
-  // 2) Iterate through all colors we want to detect
+  // 2) Bereite die HSV-Bilder vor
   for (const auto& ctt : colors_to_detect_) {
-    // 3) Create mask for the current color
     cv::Mat mask;
     if (ctt.name == "red") {
-      // Special handling for red (wraps around H=0)
       cv::Mat mask1, mask2;
       cv::inRange(hsv, cv::Scalar(0, ctt.s_min, ctt.v_min), cv::Scalar(ctt.h_tol, ctt.s_max, ctt.v_max), mask1);
       cv::inRange(hsv, cv::Scalar(180 - ctt.h_tol, ctt.s_min, ctt.v_min), cv::Scalar(179, ctt.s_max, ctt.v_max), mask2);
@@ -121,63 +107,47 @@ void ColorSampler::callback(const sensor_msgs::ImageConstPtr& rgb,
       cv::inRange(hsv, cv::Scalar(h1, ctt.s_min, ctt.v_min), cv::Scalar(h2, ctt.s_max, ctt.v_max), mask);
     }
 
-    // 4) Clean up mask
+    // 3) clean up
     cv::morphologyEx(mask, mask, cv::MORPH_OPEN, cv::Mat(), cv::Point(-1,-1), 2);
 
-    // 5) Find color contours
+    // 4) Find color contours
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     for(auto& c : contours){
       double area = cv::contourArea(c);
-      if(area < 500) continue;  // Too small
+      if(area < 500) continue;  // zu kleine Flächen ignorieren
 
-      // 6) Find the center of the colored region
+      // 5) Finde den Mittelpunkt der farbigen Region
       cv::Moments M = cv::moments(c);
       cv::Point2f color_center(M.m10 / M.m00, M.m01 / M.m00);
 
-      // 7) Check for a matching AprilTag (ID must match the color's expected ID)
+      // 6) Prüfe, ob ein passender AprilTag vorhanden ist
       const RecentTag* matched_tag = nullptr; // Use a pointer to store the matched tag
       for(const auto& tag : recent_tags_){
-        // *** CRUCIAL CHECK: ID must match! ***
         if(tag.id != ctt.expected_tag_id) continue;
-
         // Project 3D tag position to 2D image coordinates to check for proximity
         cv::Point3d tag_pos_3d(tag.position.x, tag.position.y, tag.position.z);
         cv::Point2d tag_pos_2d = cam_model_.project3dToPixel(tag_pos_3d);
-
         // Check if the projected tag center is close to the color blob center
-        if(cv::norm(color_center - cv::Point2f(tag_pos_2d)) < 25.0) { // 25 pixel tolerance
+        if(cv::norm(color_center - cv::Point2f(tag_pos_2d)) < 25.0) { // 25 pixel tolerance - Erfahrungswert
           matched_tag = &tag; // Store a pointer to the matched tag
-          break; // Found a match, no need to check other tags for this color blob
+          break; 
         }
       }
 
-      // 8) If both color and tag match, create and publish the sample
+      // 7) Falls sowohl Farbe als auch Tag übereinstimmen, erstelle und veröffentliche die Probe
       if(matched_tag){
-        // --- START OF FINAL, PRECISE CALCULATION ---
-
-        // a) Get the precise 3D position directly from the AprilTag detection.
-        //    This position is already in the camera's coordinate frame.
         cv::Point3d point_in_cam_frame(
             matched_tag->position.x,
             matched_tag->position.y,
             matched_tag->position.z
         );
 
-        // b) Transform from camera frame to the robot's base_link frame.
-        //    This assumes a standard camera orientation where Z is forward, X is right.
-        //    Robot's X is forward, Y is left.
-        //    Therefore: robot_x = camera_z, robot_y = -camera_x
         double x_base = point_in_cam_frame.z;
         double y_base = -point_in_cam_frame.x;
-
-        // c) Calculate the correct polar coordinates (rho, theta) in the base_link frame
         double rho   = std::sqrt(x_base * x_base + y_base * y_base);
         double theta = std::atan2(y_base, x_base);
-        
-        // --- END OF FINAL, PRECISE CALCULATION ---
-
         landmark_mapper::ColorSample sample_msg;
         sample_msg.header.stamp = rgb->header.stamp;
         sample_msg.header.frame_id = "base_link";
@@ -185,18 +155,14 @@ void ColorSampler::callback(const sensor_msgs::ImageConstPtr& rgb,
         sample_msg.theta = theta;
         sample_msg.color = ctt.name;
         sample_msg.tag_id = ctt.expected_tag_id;
-
         pub_.publish(sample_msg);
         samples_.push_back({rho, theta, ctt.name, ctt.expected_tag_id});
-        
-        // Since we found a match for this color, we can stop searching through contours
+
         break; 
       }
     }
   }
 }
-
-
 
 void ColorSampler::saveSamples(){
   // 1) Verzeichnis anlegen, falls nötig
@@ -227,13 +193,10 @@ void ColorSampler::saveSamples(){
            samples_.size(), out_path_.c_str());
 }
 
-
-// ----- main direkt hier -----
-
 int main(int argc, char** argv){
   ros::init(argc, argv, "color_sampler_node");
-  ros::NodeHandle nh;        // global für Topics
-  ros::NodeHandle pnh("~");  // privat für Params
+  ros::NodeHandle nh;        
+  ros::NodeHandle pnh("~");
   ColorSampler sampler(nh, pnh);
   ros::spin();
   // Nach Ctrl-C: letzte Speicherung

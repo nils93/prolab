@@ -2,6 +2,7 @@
 #define LANDMARK_MAPPER_COLOR_SAMPLER_H
 
 #include <ros/ros.h>
+#include <ros/package.h>
 #include <sensor_msgs/Image.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
@@ -9,10 +10,13 @@
 #include <yaml-cpp/yaml.h>
 #include <vector>
 #include <string>
+#include <fstream>
+#include <filesystem>
 #include "landmark_mapper/ColorSample.h"
 #include <apriltag_ros/AprilTagDetectionArray.h> // For AprilTag messages
 #include <sensor_msgs/CameraInfo.h> // For camera intrinsics
 #include <image_geometry/pinhole_camera_model.h> // For projecting 3D points
+#include <opencv2/imgproc/imgproc.hpp>
 
 struct ColorSampleData {
   double rho, theta;

@@ -1,16 +1,16 @@
 <launch>
-
+  <!-- Simulationszeit aktivieren -->
   <param name="use_sim_time" value="true"/>
 
-  <!-- Start the AprilTag detector -->
+  <!-- AprilTag detector -->
   <include file="$(find landmark_mapper)/launch/apriltag.launch" />
 
-  <!-- Start the Color Sampler node -->
+  <!-- Color Sampler node -->
   <node name="color_sampler_node" pkg="landmark_mapper" type="color_sampler_node" output="screen">
     <param name="output_path" value="$(find landmark_mapper)/output/landmarks_raw.yaml"/>
   </node>
 
-  <!-- Start the Landmark Mapper node -->
+  <!-- Landmark Mapper node -->
   <node name="landmark_mapper_node" pkg="landmark_mapper" type="landmark_mapper_node" output="screen">
     <param name="output_path" value="$(find landmark_mapper)/output/landmarks_mapped.yaml"/>
   </node>

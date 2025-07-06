@@ -1,11 +1,5 @@
-#include <ros/ros.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <yaml-cpp/yaml.h>
-#include <fstream>
 #include "landmark_mapper/landmark_mapper.h"
-#include <filesystem>
-#include <ros/package.h> // Hinzufügen für ros::package::getPath
+
 namespace fs = std::filesystem;
 
 LandmarkMapper::LandmarkMapper(ros::NodeHandle& nh, ros::NodeHandle& pnh)
@@ -47,7 +41,6 @@ void LandmarkMapper::sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg)
   // Landmark-Signatur ist die Kombination aus Farbe und Tag-ID
   for (auto& lm : data_) {
     if (lm.color == msg->color && lm.tag_id == msg->tag_id) {
-      // *** WICHTIGE ÄNDERUNG: Gleitender Durchschnittsfilter ***
       double w_new = 1.0 / (lm.detection_count + 1.0);
       double w_old = 1.0 - w_new;
       
@@ -57,7 +50,7 @@ void LandmarkMapper::sampleCb(const landmark_mapper::ColorSample::ConstPtr& msg)
 
       ROS_DEBUG("Updated landmark [\"%s\", %d] to (%f, %f) after %d detections", 
                 lm.color.c_str(), lm.tag_id, lm.x, lm.y, lm.detection_count);
-      return; // Fertig
+      return; 
     }
   }
 
@@ -108,9 +101,7 @@ int main(int argc, char** argv){
   ros::init(argc, argv, "landmark_mapper");
   ros::NodeHandle nh, pnh("~");
   LandmarkMapper lm(nh, pnh);
-
   ros::spin();
-
   // Nach Ctrl-C: letzte Speicherung
   lm.saveLandmarks();
   return 0;

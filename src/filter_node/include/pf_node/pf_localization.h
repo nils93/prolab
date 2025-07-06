@@ -1,4 +1,3 @@
-// Datei: include/pf_node/pf_localization.h
 #ifndef PF_NODE_PF_LOCALIZATION_H
 #define PF_NODE_PF_LOCALIZATION_H
 

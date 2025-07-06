@@ -9,6 +9,8 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <Eigen/Dense>
 #include <landmark_mapper/ColorSample.h>
+#include <yaml-cpp/yaml.h>
+#include <fstream>
 
 struct Landmark {
     double x, y;
@@ -41,7 +43,7 @@ private:
     Eigen::Matrix2d Q_landmark_;  // Measurement noise (landmarks)
 
     // Landmarks
-    std::vector<Landmark> landmark_map_;
+    std::vector<Landmark> landmark_map_;    // [x, y, [color, id]]
     ros::Time last_time_;
 };
 

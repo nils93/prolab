@@ -132,7 +132,7 @@ void PFLocalization::mapCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
 void PFLocalization::laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan) {
   if (!map_received_) return;
   measurementUpdate(scan);
-  resample();  // optional
+  resample();
 }
 
 void PFLocalization::measurementUpdate(const sensor_msgs::LaserScan::ConstPtr& scan) {
@@ -204,19 +204,11 @@ void PFLocalization::resample() {
   particles_ = new_particles;
 }
 
-
 int main(int argc, char** argv) {
-  // Initialisiere ROS-Node mit Namen "pf_node"
   ros::init(argc, argv, "pf_node");
-
   // Erzeuge NodeHandle im privaten Namensraum (~)
   ros::NodeHandle nh("~");
-
-  // Erzeuge PF-Objekt, das sich um Subscriptions, Publikation und Berechnung kümmert
   PFLocalization pf(nh);
-
-  // Starte ROS-Ereignisschleife
   ros::spin();
-
   return 0;
 }
