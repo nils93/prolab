@@ -1,0 +1,30 @@
+material TaggedOrangeBox/Materials/AprilTagSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture tag_36h11_id_3.png
+        scale 1 1
+      }
+    }
+  }
+}
+
+material TaggedOrangeBox/Materials/OrangeSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture orange_texture.png
+        scale 1 1
+      }
+    }
+  }
+}
+

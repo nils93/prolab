@@ -1,0 +1,153 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="tagged_red_box">
+    <static>false</static>   <!-- Jetzt dynamisch -->
+    <link name="link">
+
+      <!-- Inertial -->
+      <inertial>
+        <mass>1.0</mass>
+        <inertia>
+          <ixx>0.166</ixx>
+          <iyy>0.166</iyy>
+          <izz>0.166</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <!-- Build the visual representation from 6 faces to assign materials -->
+
+      <!-- Top face (red) -->
+      <visual name="top_visual">
+        <pose>0 0 0.25 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.5 0.5 0.001</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://tagged_red_box/materials/scripts</uri>
+            <uri>model://tagged_red_box/materials/textures</uri>
+            <name>TaggedRedBox/Materials/RedSide</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Bottom face (red) -->
+      <visual name="bottom_visual">
+        <pose>0 0 -0.25 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.5 0.5 0.001</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://tagged_red_box/materials/scripts</uri>
+            <uri>model://tagged_red_box/materials/textures</uri>
+            <name>TaggedRedBox/Materials/RedSide</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Front face (red) -->
+      <visual name="front_visual">
+        <pose>0.25 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.001 0.5 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://tagged_red_box/materials/scripts</uri>
+            <uri>model://tagged_red_box/materials/textures</uri>
+            <name>TaggedRedBox/Materials/RedSide</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Back face (red) -->
+      <visual name="back_visual">
+        <pose>-0.25 0 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.001 0.5 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://tagged_red_box/materials/scripts</uri>
+            <uri>model://tagged_red_box/materials/textures</uri>
+            <name>TaggedRedBox/Materials/RedSide</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Right face (red) -->
+      <visual name="right_visual">
+        <pose>0 0.25 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.5 0.001 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://tagged_red_box/materials/scripts</uri>
+            <uri>model://tagged_red_box/materials/textures</uri>
+            <name>TaggedRedBox/Materials/RedSide</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Left face (red) -->
+      <visual name="left_visual">
+        <pose>0 -0.25 0 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.5 0.001 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://tagged_red_box/materials/scripts</uri>
+            <uri>model://tagged_red_box/materials/textures</uri>
+            <name>TaggedRedBox/Materials/RedSide</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- AprilTag Plate on the side -->
+      <visual name="apritag_plate_visual">
+        <pose>0.251 0 -0.1 0 0 0</pose> <!-- On the front face (+X) with a slight offset -->
+        <geometry>
+          <box>
+            <size>0.001 0.2 0.2</size> <!-- 200x200mm plate, 1mm thick -->
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>model://tagged_red_box/materials/scripts</uri>
+            <uri>model://tagged_red_box/materials/textures</uri>
+            <name>TaggedRedBox/Materials/AprilTagSide</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Collision -->
+      <collision name="collision">
+        <geometry>
+          <!-- Use a simple box for collision, not a complex mesh -->
+          <box>
+            <size>0.5 0.5 0.5</size> <!-- Assuming the box is 0.5m x 0.5m x 0.5m -->
+          </box>
+        </geometry>
+      </collision>
+
+    </link>
+  </model>
+</sdf>

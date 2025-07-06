@@ -1,0 +1,30 @@
+material TaggedGreenBox/Materials/AprilTagSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture tag_36h11_id_0.png
+        scale 1 1
+      }
+    }
+  }
+}
+
+material TaggedGreenBox/Materials/GreenSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture green_texture.png
+        scale 1 1
+      }
+    }
+  }
+}
+
