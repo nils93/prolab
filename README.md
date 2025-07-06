@@ -1,6 +1,8 @@
 # PRO_Lab
 
-## 0. Requirements
+## Getting Started
+
+### 0. Requirements
 Make sure that the package **turtlebot3_description** is available in your global ROS-Path (*/opt/ros/noetic/share*):
 ```bash
 ls /opt/ros/noetic/share/turtlebot3_description
@@ -11,20 +13,11 @@ sudo apt update
 sudo apt install ros-noetic-turtlebot3* xterm
 ```
 
-### Other Packages:
+#### Other Packages:
 ```bash
 sudo apt install xterm ros-noetic-slam-gmapping
 ```
 
-## 1. Clone the repo
-We start the proejct by cloning the repo from GitHub:
-```bash
-git clone https://github.com/nils93/prolab.git turtle_ws && cd turtle_ws
-source devel/setup.bash
-catkin build
-```
-
-## 2. Environmental Variables
 Make sure the env variable **TURTLEBOT3_MODEL** is set:
 ```bash
 echo $TURTLEBOT3_MODEL
@@ -34,17 +27,52 @@ When it's not equal to **burger_for_autorace**, change it:
 export TURTLEBOT3_MODEL=burger_for_autorace
 ```
 
-## 3. Start **roscore**
+### 1. Clone the repo
+We start the proejct by cloning the repo from GitHub:
+```bash
+git clone https://github.com/nils93/prolab.git turtle_ws && cd turtle_ws
+source devel/setup.bash
+```
+### 2. Start Version 1
+```bash
+./start_my_ros_v1.sh 
+```
+### 3. Start Version 2
+```bash
+./start_my_ros_v2.sh 
+```
+
+### Single steps
+
+### 1. Clone the repo
+We start the proejct by cloning the repo from GitHub:
+```bash
+git clone https://github.com/nils93/prolab.git turtle_ws && cd turtle_ws
+source devel/setup.bash
+catkin build
+```
+
+### 2. Environmental Variables
+Make sure the env variable **TURTLEBOT3_MODEL** is set:
+```bash
+echo $TURTLEBOT3_MODEL
+```
+When it's not equal to **burger_for_autorace**, change it:
+```bash
+export TURTLEBOT3_MODEL=burger_for_autorace
+```
+
+### 3. Start **roscore**
 ```bash
 source devel/setup.bash
 roscore
 ```
 
-## 4. Record a map
+### 4. Record a map
 Secondly, we launch the turtlebot from the **example_package**:
 ```bash
 source devel/setup.bash
-roslaunch example_package start.launch
+roslaunch example_package start_v1.launch
 ```
 In einem weiteren Terminal:
 ```bash
@@ -57,32 +85,32 @@ Note: Für den Fall, dass das nachstehende Warning kommt:
 ```
 Einfach den Befehl killen und noch mal starten.
 
-## Falls es mal hängt: Kill All!
+### Falls es mal hängt: Kill All!
 ```bash
 killall -9 roscore rosmaster rosout gzserver gzclient
 catkin clean -y
 ```
 
-## 6. Create the catkin
+### 6. Create the catkin
 ```bash
 catkin build
 ```
 
-## 7. Start the nodes
+### 7. Start the nodes
 Terminal 1
 ```bash
 roscore
 ```
 Terminal 2
 ```bash
-roslaunch example_package start.launch
+roslaunch example_package start_v1.launch
 ```
 Terminal 3
 ```bash
-roslaunch filter_node filter.launch
+roslaunch filter_node start.launch
 ```
 
-## 8. Record the filter performance
+### 8. Record the filter performance
 Terminal 4
 ```bash
 cd ~/turtle_ws/scripts/analyse/kf/
@@ -99,7 +127,7 @@ cd ~/turtle_ws/scripts/analyse/pf/
 rosbag record /pf_node/pf_particles /gazebo/model_states
 ```
 
-## 9. Analyse the filter performance
+### 9. Analyse the filter performance
 Terminal 7
 Start the script with the desired ARG (kf, ekf, pf)
 ```bash
@@ -107,9 +135,31 @@ cd ~/turtle_ws/scripts/analyse
 ./main.py --filter ARG
 ```
 
-## 8. Record the filter performance ekf with lm
-Terminal
+### 10. Start the nodes (again but other world)
+Terminal 1
+```bash
+roscore
+```
+Terminal 2
+```bash
+roslaunch example_package start_v2.launch
+```
+Terminal 3
+```bash
+roslaunch filter_node_wlm start.launch
+```
+
+### 11. Record the filter performance
+Terminal 4
 ```bash
 cd ~/turtle_ws/scripts/analyse/ekf_wlm/
 rosbag record /ekf_pose_wlm /gazebo/model_states
+```
+
+### 12. Analyse the filter performance
+Terminal 5
+Start the script with the desired ARG (kf, ekf, pf, ekf_wlm)
+```bash
+cd ~/turtle_ws/scripts/analyse
+./main.py --filter ARG
 ```
