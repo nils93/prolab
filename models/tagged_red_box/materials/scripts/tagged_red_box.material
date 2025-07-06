@@ -1,0 +1,30 @@
+material TaggedRedBox/Materials/AprilTagSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture tag_36h11_id_1.png
+        scale 1 1
+      }
+    }
+  }
+}
+
+material TaggedRedBox/Materials/RedSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture red_texture.png
+        scale 1 1
+      }
+    }
+  }
+}
+

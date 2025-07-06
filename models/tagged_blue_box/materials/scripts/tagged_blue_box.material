@@ -1,0 +1,30 @@
+material TaggedBlueBox/Materials/AprilTagSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture tag_36h11_id_2.png
+        scale 1 1
+      }
+    }
+  }
+}
+
+material TaggedBlueBox/Materials/BlueSide
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture blue_texture.png
+        scale 1 1
+      }
+    }
+  }
+}
+
