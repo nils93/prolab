@@ -3,21 +3,15 @@
 
 #include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
-#include <sensor_msgs/Imu.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
-#include <tf2/utils.h>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <Eigen/Dense>
-#include <vector>
-#include <string>
-#include "landmark_mapper/ColorSample.h" // Für die Landmarken-Messung
+#include <landmark_mapper/ColorSample.h>
 
-// Struktur zur Speicherung der Landmarken aus der Karte
 struct Landmark {
-    double x;
-    double y;
+    double x, y;
     std::string color;
     int id;
 };
@@ -27,33 +21,27 @@ public:
     EKFLocalizationWLM(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 
 private:
-    // Callbacks
     void odomCallback(const nav_msgs::Odometry::ConstPtr& odom);
     void landmarkCallback(const landmark_mapper::ColorSample::ConstPtr& msg);
-
-    // EKF-Schritte
     void predict(const nav_msgs::Odometry::ConstPtr& odom);
-    void update(const landmark_mapper::ColorSample::ConstPtr& msg);
-
-    // Hilfsfunktionen
+    void updateWithLandmark(const landmark_mapper::ColorSample::ConstPtr& msg, const Landmark& lm);
     void publishPose();
     bool loadLandmarks(const std::string& path);
 
-    // ROS-Kommunikation
+    // ROS
     ros::Subscriber odom_sub_;
     ros::Subscriber landmark_sub_;
     ros::Publisher pose_pub_;
+    tf2_ros::TransformBroadcaster tf_broadcaster_;
 
-    // Zustand und Kovarianz
-    Eigen::Vector3d mu_;      // Zustand [x, y, yaw]
-    Eigen::Matrix3d Sigma_;   // Kovarianz
-    Eigen::Matrix3d R_;       // Prozessrauschen
-    Eigen::Matrix2d Q_;       // Messrauschen (für rho, theta)
+    // EKF State
+    Eigen::Vector3d mu_;          // [x, y, theta]
+    Eigen::Matrix3d Sigma_;       // Covariance matrix
+    Eigen::Matrix3d R_;           // Process noise
+    Eigen::Matrix2d Q_landmark_;  // Measurement noise (landmarks)
 
-    // Landmarken-Karte
+    // Landmarks
     std::vector<Landmark> landmark_map_;
-
-    // Zeitstempel für dt-Berechnung
     ros::Time last_time_;
 };
 

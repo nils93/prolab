@@ -17,9 +17,11 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_geometry_msgs
   tf2_ros
+  eigen_conversions
 )
 
 ## System dependencies are found with CMake's conventions
+find_package(Eigen3 REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 
@@ -111,7 +113,7 @@ find_package(yaml-cpp REQUIRED)
 catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES filter_node_wlm
-  CATKIN_DEPENDS geometry_msgs landmark_mapper message_filters nav_msgs roscpp sensor_msgs tf2 tf2_geometry_msgs tf2_ros
+  CATKIN_DEPENDS geometry_msgs landmark_mapper message_filters nav_msgs roscpp sensor_msgs tf2 tf2_geometry_msgs tf2_ros eigen_conversions
 #  DEPENDS yaml-cpp
 )
 
@@ -124,6 +126,7 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
   ${YAML_CPP_INCLUDE_DIRS}
 )
 

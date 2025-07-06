@@ -7,9 +7,9 @@
   <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom"
         args="0 0 0 0 0 0 map odom"/>
 
-  <!-- Map Server 
+  <!-- Map Server -->
   <node pkg="map_server" type="map_server" name="map_server"
-        args="$(find filter_node)/maps/my_map.yaml" output="screen"/> -->
+        args="$(find filter_node)/maps/my_map.yaml" output="screen"/>
 
   <!-- Kalman-Filter -->
   <node pkg="filter_node" type="kf_node" name="kf_node" output="screen">

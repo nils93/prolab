@@ -6,10 +6,9 @@
   <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom"
         args="0 0 0 0 0 0 map odom"/>
 
-
   <!-- 1) Gazebo leere Welt -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name"   value="$(find example_package)/world/another_playground.world"/>
+    <arg name="world_name"   value="$(find example_package)/world/playground_v2.world"/>
     <arg name="gui"          value="true"/>
     <arg name="headless"     value="false"/>
     <arg name="paused"       value="false"/>
@@ -30,27 +29,13 @@
     <remap from="joint_states" to="gazebo/joint_states"/>
   </node>
 
-  <!-- Map Server -->
-  <node pkg="map_server" type="map_server" name="map_server"
-        args="$(find example_package)/maps/my_map.yaml" output="screen"/>
-
-  <!-- 5) Color Sampler Node 
-  <node pkg="landmark_mapper" type="color_sampler_node" name="cs_node" output="screen">
-    <param name="use_sim_time" value="$(arg use_sim_time)"/>
-  </node> -->
-
-  <!-- 6) Landmark Mapper Node 
-  <node pkg="landmark_mapper" type="landmark_mapper" name="lm_node" output="screen">
-    <param name="use_sim_time" value="$(arg use_sim_time)"/>
-  </node> -->
-
-  <!-- 7) Teleop -->
+  <!-- 5) Teleop -->
   <node pkg="turtlebot3_teleop" type="turtlebot3_teleop_key" name="teleop_key"
         launch-prefix="xterm -e" output="screen">
     <param name="use_sim_time" value="$(arg use_sim_time)"/>
   </node>
 
-  <!-- 8) RViz -->
+  <!-- 6) RViz -->
   <node pkg="rviz" type="rviz" name="rviz" output="screen"
         args="-d $(find example_package)/config/config.rviz">
     <param name="use_sim_time" value="$(arg use_sim_time)"/>

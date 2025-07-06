@@ -116,9 +116,9 @@ find_package(yaml-cpp REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS include
+  #INCLUDE_DIRS include
 #  LIBRARIES example_package
-  CATKIN_DEPENDS cv_bridge geometry_msgs message_filters nav_msgs roscpp rospy sensor_msgs std_msgs tf actionlib move_base_msgs map_server
+  #CATKIN_DEPENDS cv_bridge geometry_msgs message_filters nav_msgs roscpp rospy sensor_msgs std_msgs tf actionlib move_base_msgs map_server
   #  DEPENDS system_lib
 )
 
@@ -129,10 +129,10 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-  include
-  ${catkin_INCLUDE_DIRS}
-  ${Eigen3_INCLUDE_DIRS}
-  ${YAML_CPP_INCLUDE_DIRS}
+  #include
+  #${catkin_INCLUDE_DIRS}
+  #${Eigen3_INCLUDE_DIRS}
+  #${YAML_CPP_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -224,13 +224,3 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
-
-#--- Filter Node ---#
-add_executable(filter_node src/filter_node.cpp)
-add_dependencies(filter_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(filter_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
-
-#--- Waypoint Navigation Node ---#
-add_executable(waypoint_nav src/waypoint_nav.cpp)
-add_dependencies(waypoint_nav ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(waypoint_nav ${catkin_LIBRARIES} yaml-cpp)
