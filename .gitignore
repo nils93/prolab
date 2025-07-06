@@ -63,3 +63,5 @@ scripts/analyse/__pycache__/
 scripts/analyse/kf/
 scripts/analyse/ekf/
 scripts/analyse/pf/
+
+src/landmark_mapper/output/

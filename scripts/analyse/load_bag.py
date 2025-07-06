@@ -32,6 +32,9 @@ def load_pose_from_bag(bag_path, filter_type, robot_name='turtlebot3_burger'):
         elif filter_type == "kf" and "kf_pose" in t:
             pose_topic = t
             break
+        elif filter_type == "ekf_wlm" and "ekf_pose_wlm" in t:
+            pose_topic = t
+            break
 
     gt_topic = next((t for t in available_topics if "model_states" in t), None)
 

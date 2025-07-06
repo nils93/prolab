@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(example_package)
+project(filter_node_wlm)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -8,26 +8,21 @@ project(example_package)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  cv_bridge
   geometry_msgs
+  landmark_mapper
   message_filters
   nav_msgs
   roscpp
-  rospy
   sensor_msgs
-  std_msgs
-  tf
   tf2
-  actionlib
-  move_base_msgs
-  map_server
+  tf2_geometry_msgs
+  tf2_ros
+  eigen_conversions
 )
 
+## System dependencies are found with CMake's conventions
 find_package(Eigen3 REQUIRED)
 find_package(yaml-cpp REQUIRED)
-
-## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -83,7 +78,7 @@ find_package(yaml-cpp REQUIRED)
 ## Generate added messages and services with any dependencies listed here
 # generate_messages(
 #   DEPENDENCIES
-#   geometry_msgs#   nav_msgs#   sensor_msgs#   std_msgs
+#   geometry_msgs#   nav_msgs#   sensor_msgs#   tf2_geometry_msgs
 # )
 
 ################################################
@@ -116,10 +111,10 @@ find_package(yaml-cpp REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  #INCLUDE_DIRS include
-#  LIBRARIES example_package
-  #CATKIN_DEPENDS cv_bridge geometry_msgs message_filters nav_msgs roscpp rospy sensor_msgs std_msgs tf actionlib move_base_msgs map_server
-  #  DEPENDS system_lib
+  INCLUDE_DIRS include
+#  LIBRARIES filter_node_wlm
+  CATKIN_DEPENDS geometry_msgs landmark_mapper message_filters nav_msgs roscpp sensor_msgs tf2 tf2_geometry_msgs tf2_ros eigen_conversions
+#  DEPENDS yaml-cpp
 )
 
 ###########
@@ -129,17 +124,16 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-  #include
-  #${catkin_INCLUDE_DIRS}
-  #${Eigen3_INCLUDE_DIRS}
-  #${YAML_CPP_INCLUDE_DIRS}
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}
+  ${YAML_CPP_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
- #add_library(${PROJECT_NAME}
-   #include/${PROJECT_NAME}/KF.cpp
-   #include/${PROJECT_NAME}/EKF.cpp
- #)
+# add_library(${PROJECT_NAME}
+#   src/${PROJECT_NAME}/filter_node_wlm.cpp
+# )
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -149,22 +143,23 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/example_package_node.cpp)
+add_executable(ekf_wlm_node src/ekf_wlm.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
 ## e.g. "rosrun someones_pkg node" instead of "rosrun someones_pkg someones_pkg_node"
-# set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME node PREFIX "")
+# set_target_properties(ekf_wlm_node PROPERTIES OUTPUT_NAME node PREFIX "")
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# add_dependencies(ekf_wlm_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(ekf_wlm_node
+  ${catkin_LIBRARIES}
+  ${YAML_CPP_LIBRARIES}
+)
 
 #############
 ## Install ##
@@ -182,9 +177,9 @@ include_directories(
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-# install(TARGETS ${PROJECT_NAME}_node
-#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+install(TARGETS ekf_wlm_node
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark libraries for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html
@@ -195,11 +190,11 @@ include_directories(
 # )
 
 ## Mark cpp header files for installation
-# install(DIRECTORY include/${PROJECT_NAME}/
-#   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-#   FILES_MATCHING PATTERN "*.h"
-#   PATTERN ".svn" EXCLUDE
-# )
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN ".svn" EXCLUDE
+)
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 # install(FILES
@@ -207,17 +202,13 @@ include_directories(
 #   # myfile2
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 # )
-#install(PROGRAMS
-#  scripts/waypoint_nav.py
-#  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-#)
 
 #############
 ## Testing ##
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_example_package.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_filter_node_wlm.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

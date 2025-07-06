@@ -1,0 +1,26 @@
+<launch>
+
+  <!-- Simulationszeit aktivieren -->
+  <param name="use_sim_time" value="true"/>
+
+  <!-- Map Server -->
+  <node pkg="map_server" type="map_server" name="map_server"
+        args="$(find filter_node_wlm)/maps/my_map.yaml" output="screen"/> 
+
+    <!-- Start the EKF localization node -->
+    <node pkg="filter_node_wlm" type="ekf_wlm_node" name="ekf_wlm_node" output="screen">
+        <!-- Provide the path to the landmark map file -->
+         <param name="use_sim_time" value="true"/>
+         <remap from="odom" to="/odom"/>
+        <param name="landmark_map_path" value="$(find filter_node_wlm)/landmarks/landmarks_gt.yaml" />
+    </node>
+
+  <!-- Start the AprilTag detector -->
+  <include file="$(find landmark_mapper)/launch/apriltag.launch" />
+
+  <!-- Start the Color Sampler node -->
+  <node name="color_sampler_node" pkg="landmark_mapper" type="color_sampler_node" output="screen">
+    <param name="output_path" value="$(find landmark_mapper)/output/landmarks_raw.yaml"/>
+  </node>
+
+</launch>

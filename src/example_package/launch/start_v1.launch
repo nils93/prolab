@@ -1,0 +1,43 @@
+<launch>
+  <!-- Sim-Time global aktivieren -->
+  <arg name="use_sim_time" default="true"/>
+
+  <!-- 0) statischen TF map → odom (Identity) -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom"
+        args="0 0 0 0 0 0 map odom"/>
+
+  <!-- 1) Gazebo leere Welt -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name"   value="$(find example_package)/world/playground_v1.world"/>
+    <arg name="gui"          value="true"/>
+    <arg name="headless"     value="false"/>
+    <arg name="paused"       value="false"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+  </include>
+
+  <!-- 2) Robot Description aus lokalem Xacro -->
+  <param name="robot_description"
+         command="$(find xacro)/xacro $(find example_package)/urdf/turtlebot3_burger_for_autorace.urdf.xacro"/>
+
+  <!-- 3) TurtleBot in Gazebo spawnen -->
+  <node pkg="gazebo_ros" type="spawn_model" name="spawn_urdf" output="screen"
+        args="-param robot_description -urdf -model turtlebot3_burger -x 0 -y 0 -z 0 -Y 0"/>
+
+  <!-- 4) Robot State Publisher -->
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+    <remap from="joint_states" to="gazebo/joint_states"/>
+  </node>
+
+  <!-- 5) Teleop -->
+  <node pkg="turtlebot3_teleop" type="turtlebot3_teleop_key" name="teleop_key"
+        launch-prefix="xterm -e" output="screen">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+  </node>
+
+  <!-- 6) RViz -->
+  <node pkg="rviz" type="rviz" name="rviz" output="screen"
+        args="-d $(find example_package)/config/config.rviz">
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+  </node>
+</launch>

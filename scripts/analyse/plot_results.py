@@ -41,6 +41,37 @@ def plot_trajectory(pose, gt_interp, rmse_vals, landmarks=None, num_landmarks=No
     plt.close()
 
 
+def plot_trajectory_no_landmarks(pose, gt_interp, rmse_vals, save_path="export", pf_topic="Filter", gt_topic="GT"):
+    """
+    Zeichnet Trajektorien (Filter vs. Ground Truth), Start-/Endpunkte ohne Landmarken.
+    """
+    x_p, y_p = pose[:, 1], pose[:, 2]
+    x_g, y_g = gt_interp[:, 1], gt_interp[:, 2]
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.plot(x_g, y_g, 'b.', markersize=2, label=f'{gt_topic}')
+    ax.plot(x_p, y_p, 'r-', linewidth=1, label=f'{pf_topic}')
+    ax.plot(x_p[0], y_p[0], 'go', label='Start')
+    ax.plot(x_p[-1], y_p[-1], 'ro', label='Ende')
+
+    ax.legend()
+
+    ax.text(0.98, 0.02,
+            f"RMSE X: {rmse_vals[0]*1000:.1f} mm\nRMSE Y: {rmse_vals[1]*1000:.1f} mm",
+            transform=ax.transAxes, ha='right', va='bottom',
+            fontsize=9, bbox=dict(facecolor='white', edgecolor='gray', boxstyle='round,pad=0.3'))
+
+    ax.set_title('Trajektorie (ohne Landmarken)')
+    ax.set_xlabel('x [m]')
+    ax.set_ylabel('y [m]')
+    ax.axis('equal')
+
+    os.makedirs(save_path, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_path, "trajectory_no_lm.png"), dpi=300)
+    plt.close()
+
+
 def plot_orientation(pose, gt_interp, rmse_vals, save_path="export", pf_topic="Filter", gt_topic="GT"):
     """
     Zeichnet Yaw-Winkel (Filter vs. Ground Truth) über die Zeit.
