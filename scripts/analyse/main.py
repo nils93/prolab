@@ -9,12 +9,12 @@ from scipy.spatial import cKDTree
 
 from load_bag import load_pose_from_bag
 from compute_metrics import interpolate_ground_truth, compute_rmse
-from plot_results import plot_trajectory, plot_orientation, plot_position_errors, plot_orientation_errors
+from plot_results import plot_trajectory, plot_trajectory_no_landmarks, plot_orientation, plot_position_errors, plot_orientation_errors
 
 # === Argumente: --filter pf|ekf|kf ===
 parser = argparse.ArgumentParser()
-parser.add_argument("--filter", required=True, choices=["pf", "ekf", "kf"],
-                    help="Filtertyp auswählen: pf | ekf | kf")
+parser.add_argument("--filter", required=True, choices=["pf", "ekf", "kf", "ekf_wlm"],
+                    help="Filtertyp auswählen: pf | ekf | kf | ekf_wlm" )
 args = parser.parse_args()
 filter_dir = args.filter
 
@@ -65,6 +65,10 @@ filtered_landmarks = landmarks_xy[list(indices)]
 plot_trajectory(pose, gt_interp, rmse_vals,
                 landmarks=filtered_landmarks, num_landmarks=len(filtered_landmarks),
                 save_path=export_dir, pf_topic=pose_topic, gt_topic=gt_topic)
+
+plot_trajectory_no_landmarks(pose, gt_interp, rmse_vals, 
+                save_path=export_dir, pf_topic=pose_topic, gt_topic=gt_topic)
+
 plot_orientation(pose, gt_interp, rmse_vals,
                  save_path=export_dir, pf_topic=pose_topic, gt_topic=gt_topic)
 

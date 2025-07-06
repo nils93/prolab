@@ -106,3 +106,10 @@ Start the script with the desired ARG (kf, ekf, pf)
 cd ~/turtle_ws/scripts/analyse
 ./main.py --filter ARG
 ```
+
+## 8. Record the filter performance ekf with lm
+Terminal
+```bash
+cd ~/turtle_ws/scripts/analyse/ekf_wlm/
+rosbag record /ekf_pose_wlm /gazebo/model_states
+```

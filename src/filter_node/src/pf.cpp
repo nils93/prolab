@@ -5,16 +5,38 @@ PFLocalization::PFLocalization(ros::NodeHandle& nh)
   imu_sub_(nh,  "/imu",  1),
   sync_(SyncPolicy(10), odom_sub_, imu_sub_)
 {
-  // Initiale Partikel auf 0 setzen
-  particles_.resize(num_particles_);
-  for (auto& p : particles_) {
-    p.x = 0.0;
-    p.y = 0.0;
-    p.theta = 0.0;
-    p.weight = 1.0 / num_particles_;
+  // ### Initiale Pose aus TF holen (Ground Truth) ###
+  tf2_ros::Buffer tfBuffer;
+  tf2_ros::TransformListener tfListener(tfBuffer);
+  geometry_msgs::TransformStamped t;
+  double x_init = 0.0, y_init = 0.0, yaw_init = 0.0;
+
+  ros::Duration(1.0).sleep(); // Warte kurz auf TF
+  try {
+    t = tfBuffer.lookupTransform("map", "base_link",
+                                 ros::Time(0), ros::Duration(1.0));
+    x_init = t.transform.translation.x;
+    y_init = t.transform.translation.y;
+    yaw_init = tf2::getYaw(t.transform.rotation);
+    last_time_ = t.header.stamp;
+    ROS_INFO("PF initial pose set from TF: x=%.2f, y=%.2f, yaw=%.2f", x_init, y_init, yaw_init);
+  } catch (tf2::TransformException &ex) {
+    ROS_WARN("PF initial TF lookup failed: %s. Defaulting to (0,0,0).", ex.what());
+    last_time_ = ros::Time::now();
   }
 
-  last_time_ = ros::Time::now();
+  // Initiale Partikel um die Startpose herum verteilen
+  particles_.resize(num_particles_);
+  std::normal_distribution<double> dist_x(x_init, 0.01); // Kleine Unsicherheit
+  std::normal_distribution<double> dist_y(y_init, 0.01);
+  std::normal_distribution<double> dist_theta(yaw_init, 0.01);
+
+  for (auto& p : particles_) {
+    p.x = dist_x(rng_);
+    p.y = dist_y(rng_);
+    p.theta = dist_theta(rng_);
+    p.weight = 1.0 / num_particles_;
+  }
 
   // Rauschparameter
   alpha1_ = 0.1;

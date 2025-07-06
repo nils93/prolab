@@ -1,4 +1,5 @@
 <launch>
+
   <!-- Simulationszeit aktivieren -->
   <param name="use_sim_time" value="true"/>
 
@@ -6,9 +7,9 @@
   <node pkg="tf2_ros" type="static_transform_publisher" name="map_to_odom"
         args="0 0 0 0 0 0 map odom"/>
 
-  <!-- Map Server 
+  <!-- Map Server -->
   <node pkg="map_server" type="map_server" name="map_server"
-        args="$(find filter_node_wlm)/maps/my_map.yaml" output="screen"/> -->
+        args="$(find filter_node_wlm)/maps/my_map.yaml" output="screen"/> 
 
     <!-- Start the EKF localization node -->
     <node pkg="filter_node_wlm" type="ekf_wlm_node" name="ekf_wlm_node" output="screen">

@@ -1,4 +1,7 @@
 #include "ekf_wlm/ekf_wlm.h"
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2/utils.h>
 
 EKFLocalizationWLM::EKFLocalizationWLM(ros::NodeHandle& nh, ros::NodeHandle& pnh) {
     //Landmarks aus YAML-Datei laden
@@ -11,12 +14,30 @@ EKFLocalizationWLM::EKFLocalizationWLM(ros::NodeHandle& nh, ros::NodeHandle& pnh
         return;
     }
 
+    // Initiale Pose aus TF holen (Ground Truth)
+    tf2_ros::Buffer tfBuffer;
+    tf2_ros::TransformListener tfListener(tfBuffer);
+    geometry_msgs::TransformStamped t;
+
+    ros::Duration(1.0).sleep(); // Warte kurz auf TF
+    try {
+        t = tfBuffer.lookupTransform("map", "base_link",
+                                     ros::Time(0), ros::Duration(1.0));
+        mu_(0) = t.transform.translation.x;
+        mu_(1) = t.transform.translation.y;
+        mu_(2) = tf2::getYaw(t.transform.rotation);
+        last_time_ = t.header.stamp;
+        ROS_INFO("EKF_WLM initial pose set from TF: x=%.2f, y=%.2f, yaw=%.2f", mu_(0), mu_(1), mu_(2));
+    } catch (tf2::TransformException &ex) {
+        ROS_WARN("EKF_WLM initial TF lookup failed: %s. Defaulting to (0,0,0).", ex.what());
+        mu_.setZero();
+        last_time_ = ros::Time::now();
+    }
+
     // Initialisiere EKF
-    mu_.setZero();
     Sigma_ = Eigen::Matrix3d::Identity() * 0.1;
     R_ = Eigen::Matrix3d::Identity() * 1e-3;
     Q_landmark_ = Eigen::Matrix2d::Identity() * 1e-4;
-    last_time_ = ros::Time::now();
 
     odom_sub_ = nh.subscribe("/odom", 10, &EKFLocalizationWLM::odomCallback, this);
     landmark_sub_ = nh.subscribe("/color_sample", 10, &EKFLocalizationWLM::landmarkCallback, this);
